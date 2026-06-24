@@ -1,9 +1,13 @@
 """Ensamblador de video: combina audio, clips, subtítulos y música."""
 
 import logging
+import os
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_TMP = tempfile.gettempdir()
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +95,7 @@ def _get_duration(file_path: str) -> float:
 
 
 def _generate_black_background(duration: float, w: int, h: int) -> str:
-    output = str(Path(f"/tmp/hermes_bg_{w}x{h}.mp4"))
+    output = str(Path(_TMP) / f"hermes_bg_{w}x{h}.mp4")
     subprocess.run(
         ["ffmpeg", "-y", "-f", "lavfi", "-i",
          f"color=c=black:s={w}x{h}:d={duration}:r=30",
@@ -103,11 +107,11 @@ def _generate_black_background(duration: float, w: int, h: int) -> str:
 
 def _concat_and_loop_clips(clips: list[str], target_duration: float, w: int, h: int) -> str:
     """Concatena clips, los escala al formato y los loopea hasta cubrir la duración."""
-    concat_list = str(Path("/tmp/hermes_concat.txt"))
+    concat_list = str(Path(_TMP) / "hermes_concat.txt")
     scaled_clips = []
 
     for i, clip_path in enumerate(clips):
-        scaled = f"/tmp/hermes_scaled_{i}.mp4"
+        scaled = str(Path(_TMP) / f"hermes_scaled_{i}.mp4")
         subprocess.run(
             ["ffmpeg", "-y", "-i", clip_path, "-vf",
              f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}",
@@ -130,7 +134,7 @@ def _concat_and_loop_clips(clips: list[str], target_duration: float, w: int, h: 
                 if total >= target_duration:
                     break
 
-    output = "/tmp/hermes_bg_concat.mp4"
+    output = str(Path(_TMP) / "hermes_bg_concat.mp4")
     subprocess.run(
         ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
          "-t", str(target_duration), "-c:v", "libx264", "-preset", "ultrafast", output],
