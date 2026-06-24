@@ -19,7 +19,7 @@ from telegram.ext import (
 
 from assistant import HermesAssistant
 from inference_client import is_online
-from config import ASSISTANT_NAME, TELEGRAM_TOKEN, TELEGRAM_ALLOWED_USERS
+from config import ASSISTANT_NAME, TELEGRAM_TOKEN, TELEGRAM_ALLOWED_USERS, DATA_DIR
 from security import validate_message
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.reply_text(
         f"Hola, soy {ASSISTANT_NAME}, tu asistente de IA personal.\n\n"
+        "Podés escribirme o mandarme audios de voz.\n\n"
         "Comandos:\n"
         "/status — Estado del servidor de IA\n"
         "/clear  — Borrar memoria de conversación\n"
@@ -71,6 +72,57 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     _get_session(update.effective_user.id).new_session()
     await update.message.reply_text("Nueva sesión iniciada.")
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+
+    if not _is_allowed(user_id):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action="typing"
+    )
+
+    voice = update.message.voice or update.message.audio
+    if not voice:
+        await update.message.reply_text("No se pudo leer el audio.")
+        return
+
+    voice_dir = DATA_DIR / "voice"
+    voice_dir.mkdir(parents=True, exist_ok=True)
+    ogg_path = voice_dir / f"voice_{user_id}_{update.message.message_id}.ogg"
+
+    try:
+        file = await context.bot.get_file(voice.file_id)
+        await file.download_to_drive(str(ogg_path))
+
+        from media.transcriber import transcribe
+        text = transcribe(str(ogg_path))
+
+        if not text or text.startswith("["):
+            await update.message.reply_text("No pude entender el audio. Intentá de nuevo.")
+            return
+
+        await update.message.reply_text(f"🎤 *Escuché:* _{text}_", parse_mode="Markdown")
+
+        clean_text, error = validate_message(str(user_id), text)
+        if error:
+            await update.message.reply_text(error)
+            return
+
+        response = _get_session(user_id).respond(clean_text)
+        if not response:
+            return
+
+        for i in range(0, len(response), 4000):
+            await update.message.reply_text(response[i: i + 4000])
+    except Exception as e:
+        logger.error("Error procesando audio: %s", e)
+        await update.message.reply_text(f"Error procesando audio: {e}")
+    finally:
+        ogg_path.unlink(missing_ok=True)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -112,6 +164,7 @@ def main() -> None:
     app.add_handler(CommandHandler("clear",  cmd_clear))
     app.add_handler(CommandHandler("new",    cmd_new))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
     logger.info("Starting %s Telegram bot...", ASSISTANT_NAME)
     app.run_polling(drop_pending_updates=True)
