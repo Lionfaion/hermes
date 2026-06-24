@@ -178,7 +178,7 @@ def _assemble_final(
 
     cmd.extend([
         "-map", video_map, "-map", audio_map,
-        "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
         "-shortest",

@@ -44,14 +44,17 @@ def search_pexels_videos(query: str, per_page: int = 5, orientation: str = "port
         clips = []
         for video in data.get("videos", []):
             files = video.get("video_files", [])
-            # Preferir HD vertical
+            # Preferir 1080p — evitar 4K que es muy lento de procesar
             best = None
             for f in files:
-                if f.get("height", 0) >= 720:
-                    if best is None or f.get("height", 0) > best.get("height", 0):
+                h = f.get("height", 0)
+                if 720 <= h <= 1080:
+                    if best is None or h > best.get("height", 0):
                         best = f
-            if not best and files:
-                best = files[0]
+            if not best:
+                # Fallback: cualquier archivo <= 1080p
+                candidates = [f for f in files if f.get("height", 0) <= 1080]
+                best = candidates[0] if candidates else (files[0] if files else None)
 
             if best:
                 clips.append(StockClip(
