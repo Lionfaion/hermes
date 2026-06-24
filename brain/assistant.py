@@ -166,6 +166,25 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Email tool no disponible: %s", e)
 
+    try:
+        from tools.expansion_tools import (
+            LeadGenTool, FreelanceTool, SEOTool, EcommerceTool,
+            MarketMonitorTool, CourseFactoryTool, MeetingTool,
+            ReputationTool, LegalTool, CRMTool,
+        )
+        _tool_registry.register(LeadGenTool())
+        _tool_registry.register(FreelanceTool())
+        _tool_registry.register(SEOTool())
+        _tool_registry.register(EcommerceTool())
+        _tool_registry.register(MarketMonitorTool())
+        _tool_registry.register(CourseFactoryTool())
+        _tool_registry.register(MeetingTool())
+        _tool_registry.register(ReputationTool())
+        _tool_registry.register(LegalTool())
+        _tool_registry.register(CRMTool())
+    except Exception as e:
+        logger.warning("Expansion tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool

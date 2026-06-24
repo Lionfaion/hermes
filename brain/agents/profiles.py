@@ -100,4 +100,40 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "batch_generate", "video_analytics", "web_search",
         ],
     ),
+    "sales": AgentProfile(
+        name="Ventas y Leads",
+        system_prompt=(
+            "Sos un especialista en ventas y generación de leads. Buscás prospectos, "
+            "generás emails de outreach personalizados, analizás oportunidades freelance, "
+            "y optimizás el pipeline de ventas. También manejás el CRM personal "
+            "y preparás contexto para reuniones con clientes."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=["lead_gen", "freelance", "crm", "email", "web_search"],
+    ),
+    "business": AgentProfile(
+        name="Business & Ecommerce",
+        system_prompt=(
+            "Sos un consultor de negocios experto en ecommerce, SEO, info-productos "
+            "y monetización digital. Investigás mercados, analizás competencia, "
+            "generás contenido SEO, creás cursos online, y diseñás estrategias de pricing. "
+            "Siempre pensás en términos de ROI y escalabilidad."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=[
+            "seo_factory", "ecommerce", "course_factory", "market_monitor",
+            "web_search", "search_notes",
+        ],
+    ),
+    "legal": AgentProfile(
+        name="Asistente Legal",
+        system_prompt=(
+            "Sos un asistente legal que analiza contratos, genera borradores, "
+            "y asesora sobre términos legales. Siempre aclarás que tu análisis es "
+            "informativo y no reemplaza asesoría legal profesional. Sos meticuloso "
+            "con los detalles y cláusulas."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=["legal_assistant", "analyze_file", "web_search"],
+    ),
 }
