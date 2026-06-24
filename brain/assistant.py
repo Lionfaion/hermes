@@ -4,10 +4,12 @@ from typing import Optional, Generator
 
 from config import (
     ASSISTANT_NAME, OLLAMA_MODEL, SYSTEM_PROMPT, RAG_ENABLED, LEARNING_ENABLED,
-    VAULT_PATH, CHROMA_PATH, WEB_ENABLED, WEB_USE_BROWSER,
+    VAULT_PATH, CHROMA_PATH, TOOL_CALLING_ENABLED, TOOL_MAX_ITERATIONS,
+    AGENTS_ENABLED,
 )
 from memory import init_db, save_message, get_history, clear_session
-from inference_client import is_online, chat, chat_stream
+from inference_client import is_online, chat, chat_stream, chat_with_tools
+from tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -16,24 +18,9 @@ _OFFLINE_MSG = (
     "Asegurate de que la PC principal esté encendida y Ollama esté corriendo."
 )
 
-# Lazy singletons para no bloquear el arranque
-_rag_searcher = None
 _skills_manager = None
 _interaction_logger = None
-
-
-def _get_rag():
-    global _rag_searcher
-    if _rag_searcher is None and RAG_ENABLED:
-        try:
-            from rag.indexer import VaultIndexer
-            from rag.searcher import VaultSearcher
-            indexer = VaultIndexer(VAULT_PATH, CHROMA_PATH)
-            _rag_searcher = VaultSearcher(indexer)
-            logger.info("RAG listo (vault: %s)", VAULT_PATH)
-        except Exception as e:
-            logger.warning("RAG no disponible: %s", e)
-    return _rag_searcher
+_tool_registry = None
 
 
 def _get_skills():
@@ -58,10 +45,75 @@ def _get_ilog():
     return _interaction_logger
 
 
+def _get_registry() -> ToolRegistry:
+    """Inicializa y retorna el registro global de herramientas."""
+    global _tool_registry
+    if _tool_registry is not None:
+        return _tool_registry
+
+    _tool_registry = ToolRegistry()
+
+    try:
+        from tools.web_tool import WebSearchTool, WebFetchTool
+        _tool_registry.register(WebSearchTool())
+        _tool_registry.register(WebFetchTool())
+    except Exception as e:
+        logger.warning("Web tools no disponibles: %s", e)
+
+    if RAG_ENABLED:
+        try:
+            from tools.rag_tool import SearchNotesTool
+            _tool_registry.register(SearchNotesTool())
+        except Exception as e:
+            logger.warning("RAG tool no disponible: %s", e)
+
+    try:
+        from tools.media_tool import AnalyzeMediaTool
+        _tool_registry.register(AnalyzeMediaTool())
+    except Exception as e:
+        logger.warning("Media tool no disponible: %s", e)
+
+    try:
+        from tools.file_tool import AnalyzeFileTool
+        _tool_registry.register(AnalyzeFileTool())
+    except Exception as e:
+        logger.warning("File tool no disponible: %s", e)
+
+    try:
+        from tools.system_tool import SystemCommandTool
+        _tool_registry.register(SystemCommandTool())
+    except Exception as e:
+        logger.warning("System tool no disponible: %s", e)
+
+    try:
+        from tools.memory_tool import RememberTool, RecallTool
+        _tool_registry.register(RememberTool())
+        _tool_registry.register(RecallTool())
+    except Exception as e:
+        logger.warning("Memory tools no disponibles: %s", e)
+
+    try:
+        from tools.reminder_tool import SetReminderTool
+        _tool_registry.register(SetReminderTool())
+    except Exception as e:
+        logger.warning("Reminder tool no disponible: %s", e)
+
+    if AGENTS_ENABLED:
+        try:
+            from agents.orchestrator import DelegateToAgentTool
+            _tool_registry.register(DelegateToAgentTool(_tool_registry))
+        except Exception as e:
+            logger.warning("Agent orchestrator no disponible: %s", e)
+
+    logger.info("Tools registradas: %s", _tool_registry.list_tools())
+    return _tool_registry
+
+
 class HermesAssistant:
     def __init__(self, session_id: Optional[str] = None, model: str = OLLAMA_MODEL):
         self.session_id = session_id or str(uuid.uuid4())
         self.model = model
+        self.registry = _get_registry()
         init_db()
         logger.info("Sesión iniciada: %s", self.session_id)
 
@@ -75,40 +127,18 @@ class HermesAssistant:
             if injection:
                 system_content += f"\n\n[Comportamiento aprendido de experiencia]\n{injection}"
 
+        if TOOL_CALLING_ENABLED:
+            tool_names = self.registry.list_tools()
+            if tool_names:
+                system_content += (
+                    "\n\nTenés acceso a herramientas que podés usar cuando sea necesario. "
+                    "Usá las herramientas de forma inteligente: no las uses si podés responder "
+                    "directamente con tu conocimiento."
+                )
+
         messages = [{"role": "system", "content": system_content}]
-
-        # Inyectar contexto RAG si hay query
-        if user_input:
-            rag = _get_rag()
-            if rag:
-                try:
-                    ctx = rag.build_context(user_input)
-                    if ctx:
-                        messages.append({"role": "system", "content": ctx})
-                except Exception as e:
-                    logger.warning("RAG search falló: %s", e)
-
-        # Inyectar contenido web si se detecta intención de navegación
-        if user_input and WEB_ENABLED:
-            web_ctx = self._get_web_context(user_input)
-            if web_ctx:
-                messages.append({"role": "system", "content": web_ctx})
-
         messages += get_history(self.session_id)
         return messages
-
-    def _get_web_context(self, user_input: str) -> str:
-        """Detecta intención web y obtiene contenido de internet."""
-        try:
-            from web.web_tools import detect_web_intent, process_web_action
-            intent = detect_web_intent(user_input)
-            if intent["action"] == "none":
-                return ""
-            logger.info("Intención web detectada: %s", intent)
-            return process_web_action(intent, use_browser=WEB_USE_BROWSER)
-        except Exception as e:
-            logger.warning("Web context falló: %s", e)
-            return ""
 
     def respond(self, user_input: str) -> str:
         if not user_input.strip():
@@ -125,7 +155,14 @@ class HermesAssistant:
             return _OFFLINE_MSG
 
         try:
-            response = chat(self._build_messages(user_input), self.model)
+            messages = self._build_messages(user_input)
+            messages.append({"role": "user", "content": user_input})
+
+            if TOOL_CALLING_ENABLED:
+                response = self._tool_call_loop(messages)
+            else:
+                response = chat(messages, self.model)
+
             save_message(self.session_id, "assistant", response)
             if ilog:
                 ilog.log(self.session_id, "assistant", response)
@@ -133,6 +170,41 @@ class HermesAssistant:
         except Exception as e:
             logger.error("respond() falló: %s", e)
             return f"[Error]: {e}"
+
+    def _tool_call_loop(self, messages: list) -> str:
+        """Loop de tool calling: el LLM decide qué herramienta usar."""
+        schemas = self.registry.get_schemas()
+
+        for iteration in range(TOOL_MAX_ITERATIONS):
+            response = chat_with_tools(messages, schemas, self.model)
+
+            tool_calls = response.get("tool_calls")
+            content = response.get("content", "")
+
+            if not tool_calls:
+                return content
+
+            logger.info("Tool calls (iteración %d): %s",
+                       iteration + 1,
+                       [tc.get("function", {}).get("name") for tc in tool_calls])
+
+            messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
+
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                name = func.get("name", "")
+                args = func.get("arguments", {})
+                if isinstance(args, str):
+                    import json
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+
+                result = self.registry.execute(name, args)
+                messages.append({"role": "tool", "content": result})
+
+        return response.get("content", "") or "[Se alcanzó el límite de iteraciones de herramientas]"
 
     def respond_stream(self, user_input: str) -> Generator:
         if not user_input.strip():
@@ -149,14 +221,26 @@ class HermesAssistant:
             yield _OFFLINE_MSG
             return
 
-        full_response = ""
         try:
-            for chunk in chat_stream(self._build_messages(user_input), self.model):
-                full_response += chunk
-                yield chunk
-            save_message(self.session_id, "assistant", full_response)
-            if ilog:
-                ilog.log(self.session_id, "assistant", full_response)
+            messages = self._build_messages(user_input)
+            messages.append({"role": "user", "content": user_input})
+
+            if TOOL_CALLING_ENABLED:
+                # Tool calling no soporta streaming directo.
+                # Hacemos el loop de tools sin stream, y luego retornamos el resultado.
+                response = self._tool_call_loop(messages)
+                save_message(self.session_id, "assistant", response)
+                if ilog:
+                    ilog.log(self.session_id, "assistant", response)
+                yield response
+            else:
+                full_response = ""
+                for chunk in chat_stream(messages, self.model):
+                    full_response += chunk
+                    yield chunk
+                save_message(self.session_id, "assistant", full_response)
+                if ilog:
+                    ilog.log(self.session_id, "assistant", full_response)
         except Exception as e:
             logger.error("respond_stream() falló: %s", e)
             yield f"\n[Error]: {e}"

@@ -34,18 +34,16 @@ def list_models() -> list:
         return []
 
 
-def chat(messages: list, model: str = OLLAMA_MODEL) -> str:
+def _post_chat(payload: dict) -> dict:
+    """Envía un request a /api/chat con reintentos y retorna el JSON completo."""
     last_error: Exception = RuntimeError("Unknown error")
 
     for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
         try:
             with httpx.Client(timeout=OLLAMA_TIMEOUT) as client:
-                r = client.post(
-                    f"{_BASE_URL}/api/chat",
-                    json={"model": model, "messages": messages, "stream": False},
-                )
+                r = client.post(f"{_BASE_URL}/api/chat", json=payload)
                 r.raise_for_status()
-                return r.json()["message"]["content"]
+                return r.json()
         except httpx.ConnectError:
             last_error = ConnectionError(
                 f"GPU node offline at {_BASE_URL}. Is the main PC on and Ollama running?"
@@ -61,6 +59,32 @@ def chat(messages: list, model: str = OLLAMA_MODEL) -> str:
         logger.warning("Attempt %d/%d failed: %s", attempt, INFERENCE_RETRY_ATTEMPTS, last_error)
 
     raise last_error
+
+
+def chat(messages: list, model: str = OLLAMA_MODEL) -> str:
+    data = _post_chat({"model": model, "messages": messages, "stream": False})
+    return data["message"]["content"]
+
+
+def chat_with_tools(messages: list, tools: list, model: str = OLLAMA_MODEL) -> dict:
+    """Chat con soporte de tool calling. Retorna el dict message completo."""
+    payload = {"model": model, "messages": messages, "stream": False}
+    if tools:
+        payload["tools"] = tools
+    data = _post_chat(payload)
+    return data.get("message", {})
+
+
+def chat_with_images(messages: list, images: list[str], model: str = OLLAMA_MODEL) -> str:
+    """Chat con imágenes (base64). Para modelos de visión como LLaVA."""
+    if messages and images:
+        messages = list(messages)
+        last_msg = dict(messages[-1])
+        last_msg["images"] = images
+        messages[-1] = last_msg
+
+    data = _post_chat({"model": model, "messages": messages, "stream": False})
+    return data["message"]["content"]
 
 
 def chat_stream(messages: list, model: str = OLLAMA_MODEL) -> Generator:

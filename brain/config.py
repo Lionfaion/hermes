@@ -50,6 +50,29 @@ SKILLS_PATH = os.getenv("SKILLS_PATH", str(BASE_DIR.parent / "skills.yaml"))
 MAX_SKILLS = int(os.getenv("MAX_SKILLS", "25"))
 LEARNING_ENABLED = os.getenv("LEARNING_ENABLED", "true").lower() == "true"
 
+# Tool calling
+TOOL_CALLING_ENABLED = os.getenv("TOOL_CALLING_ENABLED", "true").lower() == "true"
+TOOL_MAX_ITERATIONS = int(os.getenv("TOOL_MAX_ITERATIONS", "5"))
+
+# Multi-agent
+AGENTS_ENABLED = os.getenv("AGENTS_ENABLED", "true").lower() == "true"
+
+# Media analysis
+MEDIA_DOWNLOAD_DIR = os.getenv("MEDIA_DOWNLOAD_DIR", str(DATA_DIR / "media"))
+MEDIA_MAX_DURATION = int(os.getenv("MEDIA_MAX_DURATION", "600"))
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
+WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
+VISION_MODEL = os.getenv("VISION_MODEL", "llava")
+VISION_FRAMES = int(os.getenv("VISION_FRAMES", "4"))
+
+# System commands (allowlist)
+ALLOWED_COMMANDS = [
+    c.strip() for c in os.getenv(
+        "ALLOWED_COMMANDS",
+        "df,free,uptime,docker ps,systemctl status,ls,cat,head,tail,wc,date,whoami,hostname,ip addr"
+    ).split(",") if c.strip()
+]
+
 # Web browsing
 WEB_ENABLED = os.getenv("WEB_ENABLED", "true").lower() == "true"
 WEB_SEARCH_REGION = os.getenv("WEB_SEARCH_REGION", "es-ar")
