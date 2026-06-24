@@ -49,3 +49,9 @@ LOGS_DIR = os.getenv("LOGS_DIR", str(BASE_DIR.parent / "logs" / "interacciones")
 SKILLS_PATH = os.getenv("SKILLS_PATH", str(BASE_DIR.parent / "skills.yaml"))
 MAX_SKILLS = int(os.getenv("MAX_SKILLS", "25"))
 LEARNING_ENABLED = os.getenv("LEARNING_ENABLED", "true").lower() == "true"
+
+# Web browsing
+WEB_ENABLED = os.getenv("WEB_ENABLED", "true").lower() == "true"
+WEB_SEARCH_REGION = os.getenv("WEB_SEARCH_REGION", "es-ar")
+WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "5"))
+WEB_USE_BROWSER = os.getenv("WEB_USE_BROWSER", "false").lower() == "true"

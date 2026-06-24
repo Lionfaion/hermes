@@ -2,7 +2,10 @@ import logging
 import uuid
 from typing import Optional, Generator
 
-from config import ASSISTANT_NAME, OLLAMA_MODEL, SYSTEM_PROMPT, RAG_ENABLED, LEARNING_ENABLED, VAULT_PATH, CHROMA_PATH
+from config import (
+    ASSISTANT_NAME, OLLAMA_MODEL, SYSTEM_PROMPT, RAG_ENABLED, LEARNING_ENABLED,
+    VAULT_PATH, CHROMA_PATH, WEB_ENABLED, WEB_USE_BROWSER,
+)
 from memory import init_db, save_message, get_history, clear_session
 from inference_client import is_online, chat, chat_stream
 
@@ -85,8 +88,27 @@ class HermesAssistant:
                 except Exception as e:
                     logger.warning("RAG search falló: %s", e)
 
+        # Inyectar contenido web si se detecta intención de navegación
+        if user_input and WEB_ENABLED:
+            web_ctx = self._get_web_context(user_input)
+            if web_ctx:
+                messages.append({"role": "system", "content": web_ctx})
+
         messages += get_history(self.session_id)
         return messages
+
+    def _get_web_context(self, user_input: str) -> str:
+        """Detecta intención web y obtiene contenido de internet."""
+        try:
+            from web.web_tools import detect_web_intent, process_web_action
+            intent = detect_web_intent(user_input)
+            if intent["action"] == "none":
+                return ""
+            logger.info("Intención web detectada: %s", intent)
+            return process_web_action(intent, use_browser=WEB_USE_BROWSER)
+        except Exception as e:
+            logger.warning("Web context falló: %s", e)
+            return ""
 
     def respond(self, user_input: str) -> str:
         if not user_input.strip():
