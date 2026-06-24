@@ -179,15 +179,23 @@ class HermesAssistant:
             # URL explícita → fetch
             url_match = re.search(r'https?://\S+', text)
             if url_match:
-                url = url_match.group(0)
-                from web.scraper import fetch_page
-                result = fetch_page(url)
-                if result.success:
-                    return (
-                        f"[Contenido web de {url}]\n"
-                        f"Título: {result.title}\n"
-                        f"{result.text[:4000]}"
-                    )
+                url = url_match.group(0).rstrip('.,)')
+                # Usar Playwright (renderiza JS) para capturar SPAs y páginas dinámicas
+                try:
+                    from web.browser import browse_page
+                    result = browse_page(url)
+                except Exception:
+                    result = None
+                # Fallback a scraper estático si Playwright falla
+                if not result or not result.success or len(result.text.strip()) < 100:
+                    from web.scraper import fetch_page
+                    static = fetch_page(url)
+                    if static.success and len(static.text.strip()) > (len(result.text.strip()) if result else 0):
+                        result = static
+                if result and result.success:
+                    content = result.text.strip()[:5000]
+                    header = f"Título: {result.title}" if result.title else ""
+                    return f"{header}\n\n{content}".strip()
                 return ""
 
             # Detección de intención de búsqueda
@@ -205,10 +213,9 @@ class HermesAssistant:
             logger.warning("_fetch_web_context falló: %s", e)
         return ""
 
-    def _build_messages(self, user_input: str = "", web_context: str = "") -> list:
+    def _build_messages(self, user_input: str = "") -> list:
         system_content = SYSTEM_PROMPT
 
-        # Inyectar lecciones aprendidas
         skills = _get_skills()
         if skills:
             injection = skills.build_system_injection()
@@ -223,9 +230,6 @@ class HermesAssistant:
                     "Usá las herramientas de forma inteligente: no las uses si podés responder "
                     "directamente con tu conocimiento."
                 )
-
-        if web_context:
-            system_content += f"\n\n{web_context}"
 
         messages = [{"role": "system", "content": system_content}]
         messages += get_history(self.session_id)
@@ -247,8 +251,13 @@ class HermesAssistant:
 
         try:
             web_context = self._fetch_web_context(user_input)
-            messages = self._build_messages(user_input, web_context=web_context)
-            messages.append({"role": "user", "content": user_input})
+            messages = self._build_messages(user_input)
+
+            if web_context:
+                augmented = f"{user_input}\n\n---\n{web_context}\n---"
+                messages.append({"role": "user", "content": augmented})
+            else:
+                messages.append({"role": "user", "content": user_input})
 
             if TOOL_CALLING_ENABLED:
                 response = self._tool_call_loop(messages)
@@ -315,8 +324,13 @@ class HermesAssistant:
 
         try:
             web_context = self._fetch_web_context(user_input)
-            messages = self._build_messages(user_input, web_context=web_context)
-            messages.append({"role": "user", "content": user_input})
+            messages = self._build_messages(user_input)
+
+            if web_context:
+                augmented = f"{user_input}\n\n---\n{web_context}\n---"
+                messages.append({"role": "user", "content": augmented})
+            else:
+                messages.append({"role": "user", "content": user_input})
 
             if TOOL_CALLING_ENABLED:
                 response = self._tool_call_loop(messages)
