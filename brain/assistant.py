@@ -98,6 +98,14 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Reminder tool no disponible: %s", e)
 
+    try:
+        from tools.video_tool import ReplicateViralTool, GenerateVideoTool, AnalyzeViralTool
+        _tool_registry.register(ReplicateViralTool())
+        _tool_registry.register(GenerateVideoTool())
+        _tool_registry.register(AnalyzeViralTool())
+    except Exception as e:
+        logger.warning("Video tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
