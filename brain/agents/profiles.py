@@ -44,4 +44,17 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         model=OLLAMA_MODEL,
         tool_names=["analyze_media", "web_fetch", "web_search"],
     ),
+    "designer": AgentProfile(
+        name="Diseñador",
+        system_prompt=(
+            "Sos un diseñador web y UI/UX experto. Creás páginas web, landing pages, "
+            "dashboards y formularios visualmente atractivos y modernos. "
+            "Usás Google Stitch cuando está disponible, y generás HTML/CSS/Tailwind "
+            "de producción cuando no. Siempre priorizá: mobile-first, accesibilidad, "
+            "y una experiencia de usuario clara. Preguntá sobre colores, tipografía y "
+            "estilo si el usuario no los especifica."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=["design_page", "iterate_design", "generate_html", "web_search", "web_fetch"],
+    ),
 }

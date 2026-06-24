@@ -18,6 +18,7 @@ class DelegateToAgentTool(BaseTool):
         "- coder: Programación, código, comandos del sistema\n"
         "- analyst: Análisis de datos y documentos\n"
         "- media_specialist: Análisis de videos, audios e imágenes\n"
+        "- designer: Diseño web, landing pages, UI/UX con Google Stitch\n"
         "Úsala cuando la tarea requiera trabajo profundo de un especialista."
     )
     parameters = {

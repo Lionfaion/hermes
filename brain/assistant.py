@@ -107,6 +107,14 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Video tools no disponibles: %s", e)
 
+    try:
+        from tools.design_tool import DesignPageTool, IterateDesignTool, GenerateHTMLTool
+        _tool_registry.register(DesignPageTool())
+        _tool_registry.register(IterateDesignTool())
+        _tool_registry.register(GenerateHTMLTool())
+    except Exception as e:
+        logger.warning("Design tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
