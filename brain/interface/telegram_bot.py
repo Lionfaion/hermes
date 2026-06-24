@@ -55,10 +55,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Hola, soy {ASSISTANT_NAME}, tu asistente de IA personal.\n\n"
         "Podés escribirme o mandarme audios de voz.\n\n"
         "Comandos:\n"
-        "/status — Estado del servidor de IA\n"
-        "/clear  — Borrar memoria de conversación\n"
-        "/new    — Nueva sesión\n"
-        "/help   — Mostrar esta ayuda"
+        "/remember [texto] — Guardar algo en Obsidian para que lo recuerde siempre\n"
+        "/status  — Estado del servidor de IA\n"
+        "/clear   — Borrar memoria de conversación\n"
+        "/new     — Nueva sesión\n"
+        "/help    — Mostrar esta ayuda"
     )
 
 
@@ -81,6 +82,35 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     _get_session(update.effective_user.id).new_session()
     await update.message.reply_text("Nueva sesión iniciada.")
+
+
+async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update.effective_user.id):
+        return
+    text = " ".join(context.args).strip() if context.args else ""
+    if not text:
+        await update.message.reply_text(
+            "Uso: /remember [lo que querés que recuerde]\n"
+            "Ejemplo: /remember me llamo Cris, soy de Argentina"
+        )
+        return
+    try:
+        from pathlib import Path
+        from datetime import datetime
+        from config import VAULT_PATH
+        vault = Path(VAULT_PATH)
+        note = vault / "Hermes" / "Memorias.md"
+        note.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        entry = f"- [{timestamp}] {text}\n"
+        if note.exists():
+            note.write_text(note.read_text(encoding="utf-8") + entry, encoding="utf-8")
+        else:
+            note.write_text(f"# Memorias de Hermes\n\n{entry}", encoding="utf-8")
+        await update.message.reply_text(f"Guardado en Obsidian: {text}")
+    except Exception as e:
+        logger.error("cmd_remember error: %s", e)
+        await update.message.reply_text(f"Error al guardar: {e}")
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -188,11 +218,12 @@ def main() -> None:
         sys.exit(1)
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start",  cmd_start))
-    app.add_handler(CommandHandler("help",   cmd_start))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("clear",  cmd_clear))
-    app.add_handler(CommandHandler("new",    cmd_new))
+    app.add_handler(CommandHandler("start",    cmd_start))
+    app.add_handler(CommandHandler("help",     cmd_start))
+    app.add_handler(CommandHandler("status",   cmd_status))
+    app.add_handler(CommandHandler("clear",    cmd_clear))
+    app.add_handler(CommandHandler("new",      cmd_new))
+    app.add_handler(CommandHandler("remember", cmd_remember))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 

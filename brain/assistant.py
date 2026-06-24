@@ -3,6 +3,8 @@ import re
 import uuid
 from typing import Optional, Generator
 
+from pathlib import Path
+
 from config import (
     ASSISTANT_NAME, OLLAMA_MODEL, SYSTEM_PROMPT, RAG_ENABLED, LEARNING_ENABLED,
     VAULT_PATH, CHROMA_PATH, TOOL_CALLING_ENABLED, TOOL_MAX_ITERATIONS,
@@ -11,6 +13,32 @@ from config import (
 from memory import init_db, save_message, get_history, clear_session
 from inference_client import is_online, chat, chat_stream, chat_with_tools
 from tools.registry import ToolRegistry
+
+_MEMORIES_NOTE = "Hermes/Memorias"  # path relativo dentro del vault (sin .md)
+_vault_indexer = None
+_vault_searcher = None
+
+
+def _get_vault_rag():
+    """Inicializa y retorna el indexer+searcher del vault (lazy, singleton)."""
+    global _vault_indexer, _vault_searcher
+    if _vault_searcher is not None:
+        return _vault_indexer, _vault_searcher
+    if not RAG_ENABLED:
+        return None, None
+    try:
+        from rag.indexer import VaultIndexer
+        from rag.searcher import VaultSearcher
+        _vault_indexer = VaultIndexer(vault_path=VAULT_PATH, db_path=CHROMA_PATH)
+        _vault_searcher = VaultSearcher(_vault_indexer)
+        # Indexar en segundo plano solo si el vault tiene notas
+        vault = Path(VAULT_PATH)
+        if list(vault.rglob("*.md")):
+            import threading
+            threading.Thread(target=_vault_indexer.index_vault, daemon=True).start()
+    except Exception as e:
+        logger.warning("RAG no disponible: %s", e)
+    return _vault_indexer, _vault_searcher
 
 _WEB_SEARCH_TRIGGERS = {
     "busca", "buscá", "buscar", "googlea", "googleá", "googlear",
@@ -169,6 +197,31 @@ class HermesAssistant:
         init_db()
         logger.info("Sesión iniciada: %s", self.session_id)
 
+    def _load_memories(self) -> str:
+        """Lee la nota de memorias del vault de Obsidian e inyecta en el system prompt."""
+        try:
+            vault = Path(VAULT_PATH)
+            note = (vault / _MEMORIES_NOTE).with_suffix(".md")
+            if note.exists():
+                content = note.read_text(encoding="utf-8", errors="ignore").strip()
+                if content:
+                    return f"[Lo que sé del usuario — información persistente]\n{content}"
+        except Exception as e:
+            logger.debug("_load_memories error: %s", e)
+        return ""
+
+    def _search_vault(self, query: str) -> str:
+        """Búsqueda semántica en el vault para contexto relevante al mensaje."""
+        _, searcher = _get_vault_rag()
+        if searcher is None:
+            return ""
+        try:
+            ctx = searcher.build_context(query)
+            return ctx
+        except Exception as e:
+            logger.debug("_search_vault error: %s", e)
+        return ""
+
     def _fetch_web_context(self, user_input: str) -> str:
         """Auto-búsqueda web si el mensaje lo requiere. Retorna contexto formateado o ''."""
         if not WEB_ENABLED:
@@ -215,6 +268,17 @@ class HermesAssistant:
 
     def _build_messages(self, user_input: str = "") -> list:
         system_content = SYSTEM_PROMPT
+
+        # Memorias persistentes del vault (siempre incluidas)
+        memories = self._load_memories()
+        if memories:
+            system_content += f"\n\n{memories}"
+
+        # Contexto semántico del vault relevante al mensaje
+        if user_input:
+            vault_ctx = self._search_vault(user_input)
+            if vault_ctx:
+                system_content += f"\n\n{vault_ctx}"
 
         skills = _get_skills()
         if skills:
