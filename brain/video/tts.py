@@ -100,7 +100,7 @@ async def _generate_edge_tts(text: str, output_path: str, voice: str, rate: str)
                 elif chunk["type"] == "WordBoundary":
                     submaker.feed(chunk)
 
-        srt_content = submaker.generate_subs()
+        srt_content = submaker.get_srt() if hasattr(submaker, "get_srt") else submaker.generate_subs()
         if srt_content:
             with open(srt_path, "w", encoding="utf-8") as f:
                 f.write(srt_content)
