@@ -115,6 +115,13 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Design tools no disponibles: %s", e)
 
+    try:
+        from tools.strategy_tool import StrategicAnalysisTool, FrameworkGuideTool
+        _tool_registry.register(StrategicAnalysisTool())
+        _tool_registry.register(FrameworkGuideTool())
+    except Exception as e:
+        logger.warning("Strategy tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool

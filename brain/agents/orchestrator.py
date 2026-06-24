@@ -19,6 +19,7 @@ class DelegateToAgentTool(BaseTool):
         "- analyst: Análisis de datos y documentos\n"
         "- media_specialist: Análisis de videos, audios e imágenes\n"
         "- designer: Diseño web, landing pages, UI/UX con Google Stitch\n"
+        "- strategist: Planificación estratégica, análisis de negocio (FODA, Pareto, Blue Ocean, Eisenhower, Customer Journey)\n"
         "Úsala cuando la tarea requiera trabajo profundo de un especialista."
     )
     parameters = {

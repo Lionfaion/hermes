@@ -57,4 +57,18 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         model=OLLAMA_MODEL,
         tool_names=["design_page", "iterate_design", "generate_html", "web_search", "web_fetch"],
     ),
+    "strategist": AgentProfile(
+        name="Estratega",
+        system_prompt=(
+            "Sos un consultor estratégico experto. Dominás los frameworks: "
+            "Pareto (80/20), FODA/SWOT, Blue Ocean Strategy, Matriz de Eisenhower "
+            "y Customer Journey Mapping. Tu trabajo es analizar situaciones de negocio, "
+            "identificar oportunidades, priorizar acciones y dar recomendaciones "
+            "accionables y concretas. Siempre aplicá el framework más relevante al caso "
+            "y explicá tu razonamiento. Buscá información adicional si necesitás contexto "
+            "del mercado o la competencia."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=["strategic_analysis", "framework_guide", "web_search", "search_notes"],
+    ),
 }
