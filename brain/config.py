@@ -40,7 +40,7 @@ TELEGRAM_ALLOWED_USERS = [
 ]
 
 # Vault & RAG
-VAULT_PATH = os.getenv("VAULT_PATH", r"C:\Users\chsan\hermes-vault")
+VAULT_PATH = os.getenv("VAULT_PATH", str(Path.home() / "hermes-vault"))
 CHROMA_PATH = os.getenv("CHROMA_PATH", str(DATA_DIR / "chromadb"))
 RAG_ENABLED = os.getenv("RAG_ENABLED", "true").lower() == "true"
 

@@ -12,7 +12,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "Siempre citá tus fuentes. Buscá en múltiples fuentes antes de responder."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["web_search", "web_fetch", "search_notes"],
+        tool_names=["web_search", "web_fetch", "search_notes", "vault_read", "vault_list"],
     ),
     "coder": AgentProfile(
         name="Programador",
@@ -32,7 +32,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "con datos que las respalden."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["analyze_file", "search_notes", "web_search"],
+        tool_names=["analyze_file", "search_notes", "vault_read", "vault_list", "web_search"],
     ),
     "media_specialist": AgentProfile(
         name="Especialista en Media",
@@ -69,6 +69,6 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "del mercado o la competencia."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["strategic_analysis", "framework_guide", "web_search", "search_notes"],
+        tool_names=["strategic_analysis", "framework_guide", "web_search", "search_notes", "vault_read", "vault_list"],
     ),
 }

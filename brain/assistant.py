@@ -68,6 +68,14 @@ def _get_registry() -> ToolRegistry:
             logger.warning("RAG tool no disponible: %s", e)
 
     try:
+        from tools.vault_tool import VaultReadTool, VaultWriteTool, VaultListTool
+        _tool_registry.register(VaultReadTool())
+        _tool_registry.register(VaultWriteTool())
+        _tool_registry.register(VaultListTool())
+    except Exception as e:
+        logger.warning("Vault tools no disponibles: %s", e)
+
+    try:
         from tools.media_tool import AnalyzeMediaTool
         _tool_registry.register(AnalyzeMediaTool())
     except Exception as e:
