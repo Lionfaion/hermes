@@ -2,9 +2,18 @@
 """
 Hermes Telegram Bot — secured with rate limiting and input validation.
 """
+import asyncio
+import faulthandler
 import logging
 import sys
 from pathlib import Path
+
+# Dump stack trace on crash (Windows access violations, etc.)
+faulthandler.enable()
+
+# Fix asyncio on Windows when running without a console (hidden process)
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -152,6 +161,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(response[i: i + 4000])
 
 
+async def _run(app: Application) -> None:
+    """Manual async loop — avoids signal handler machinery that crashes on Windows without console."""
+    await app.initialize()
+    await app.updater.start_polling(drop_pending_updates=True)
+    await app.start()
+    logger.info("Bot running (background-safe loop)")
+    try:
+        while True:
+            await asyncio.sleep(30)
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        pass
+    finally:
+        logger.info("Shutting down bot...")
+        try:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+        except Exception as e:
+            logger.error("Error during shutdown: %s", e)
+
+
 def main() -> None:
     if not TELEGRAM_TOKEN:
         logger.error("TELEGRAM_TOKEN no configurado.")
@@ -167,7 +197,16 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
     logger.info("Starting %s Telegram bot...", ASSISTANT_NAME)
-    app.run_polling(drop_pending_updates=True)
+    try:
+        asyncio.run(_run(app))
+        logger.info("asyncio.run() returned normally — bot stopped")
+    except KeyboardInterrupt:
+        logger.info("Bot stopped via KeyboardInterrupt")
+    except SystemExit as e:
+        logger.info("Bot stopped via SystemExit(%s)", e.code)
+    except BaseException as e:
+        logger.critical("Fatal crash (%s): %s", type(e).__name__, e, exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

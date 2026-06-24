@@ -1,15 +1,27 @@
 import logging
+import re
 import uuid
 from typing import Optional, Generator
 
 from config import (
     ASSISTANT_NAME, OLLAMA_MODEL, SYSTEM_PROMPT, RAG_ENABLED, LEARNING_ENABLED,
     VAULT_PATH, CHROMA_PATH, TOOL_CALLING_ENABLED, TOOL_MAX_ITERATIONS,
-    AGENTS_ENABLED,
+    AGENTS_ENABLED, WEB_ENABLED, WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_REGION,
 )
 from memory import init_db, save_message, get_history, clear_session
 from inference_client import is_online, chat, chat_stream, chat_with_tools
 from tools.registry import ToolRegistry
+
+_WEB_SEARCH_TRIGGERS = {
+    "busca", "buscá", "buscar", "googlea", "googleá", "googlear",
+    "qué pasó", "qué paso", "qué dice", "qué dicen", "qué es",
+    "quién es", "quien es", "qué hay", "qué hubo",
+    "noticias", "última hora", "últimas noticias", "novedades",
+    "precio de", "cuánto sale", "cuanto sale", "cotización", "cotizacion",
+    "dólar", "dolar", "euro", "clima", "tiempo en", "pronóstico",
+    "wikipedia", "encontrá", "investigá", "búscame", "busqueme",
+    "reciente", "recientes", "actual", "actualidad", "hoy en día",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +169,43 @@ class HermesAssistant:
         init_db()
         logger.info("Sesión iniciada: %s", self.session_id)
 
-    def _build_messages(self, user_input: str = "") -> list:
+    def _fetch_web_context(self, user_input: str) -> str:
+        """Auto-búsqueda web si el mensaje lo requiere. Retorna contexto formateado o ''."""
+        if not WEB_ENABLED:
+            return ""
+        try:
+            text = user_input.strip()
+
+            # URL explícita → fetch
+            url_match = re.search(r'https?://\S+', text)
+            if url_match:
+                url = url_match.group(0)
+                from web.scraper import fetch_page
+                result = fetch_page(url)
+                if result.success:
+                    return (
+                        f"[Contenido web de {url}]\n"
+                        f"Título: {result.title}\n"
+                        f"{result.text[:4000]}"
+                    )
+                return ""
+
+            # Detección de intención de búsqueda
+            lower = text.lower()
+            needs_search = any(trigger in lower for trigger in _WEB_SEARCH_TRIGGERS)
+            if not needs_search:
+                return ""
+
+            from web.search import web_search, format_search_results
+            results = web_search(text, max_results=WEB_SEARCH_MAX_RESULTS, region=WEB_SEARCH_REGION)
+            if results:
+                logger.info("Web search ejecutada para: %.60s", text)
+                return format_search_results(results)
+        except Exception as e:
+            logger.warning("_fetch_web_context falló: %s", e)
+        return ""
+
+    def _build_messages(self, user_input: str = "", web_context: str = "") -> list:
         system_content = SYSTEM_PROMPT
 
         # Inyectar lecciones aprendidas
@@ -175,6 +223,9 @@ class HermesAssistant:
                     "Usá las herramientas de forma inteligente: no las uses si podés responder "
                     "directamente con tu conocimiento."
                 )
+
+        if web_context:
+            system_content += f"\n\n{web_context}"
 
         messages = [{"role": "system", "content": system_content}]
         messages += get_history(self.session_id)
@@ -195,7 +246,8 @@ class HermesAssistant:
             return _OFFLINE_MSG
 
         try:
-            messages = self._build_messages(user_input)
+            web_context = self._fetch_web_context(user_input)
+            messages = self._build_messages(user_input, web_context=web_context)
             messages.append({"role": "user", "content": user_input})
 
             if TOOL_CALLING_ENABLED:
@@ -262,12 +314,11 @@ class HermesAssistant:
             return
 
         try:
-            messages = self._build_messages(user_input)
+            web_context = self._fetch_web_context(user_input)
+            messages = self._build_messages(user_input, web_context=web_context)
             messages.append({"role": "user", "content": user_input})
 
             if TOOL_CALLING_ENABLED:
-                # Tool calling no soporta streaming directo.
-                # Hacemos el loop de tools sin stream, y luego retornamos el resultado.
                 response = self._tool_call_loop(messages)
                 save_message(self.session_id, "assistant", response)
                 if ilog:
