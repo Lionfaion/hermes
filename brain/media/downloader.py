@@ -57,17 +57,17 @@ def download_media(url: str) -> DownloadResult:
 
         # Nueva instancia limpia para descargar
         with yt_dlp.YoutubeDL(ydl_opts) as ydl_dl:
-            ydl_dl.download([url])
+            try:
+                ydl_dl.download([url])
+            except yt_dlp.utils.MaxDownloadsReached:
+                pass  # el video ya se descargó, la excepción se lanza después del 100%
 
-        ext = "mp4"
-        video_path = str(output_dir / f"{video_id}.{ext}")
-        if not Path(video_path).exists():
-            # Buscar el archivo descargado por id
-            candidates = list(output_dir.glob(f"{video_id}.*"))
-            if candidates:
-                video_path = str(candidates[0])
-            else:
-                return DownloadResult(success=False, error="Archivo descargado no encontrado")
+        # Buscar el archivo por id (cualquier extensión)
+        candidates = list(output_dir.glob(f"{video_id}.*"))
+        candidates = [c for c in candidates if c.suffix not in (".wav", ".part")]
+        if not candidates:
+            return DownloadResult(success=False, error="Archivo descargado no encontrado")
+        video_path = str(max(candidates, key=lambda p: p.stat().st_size))
 
         audio_path = _extract_audio(video_path)
 
