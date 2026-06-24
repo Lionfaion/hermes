@@ -86,6 +86,13 @@ YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET", "")
 YOUTUBE_REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN", "")
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "")
 
+# Email
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+
 # Web browsing
 WEB_ENABLED = os.getenv("WEB_ENABLED", "true").lower() == "true"
 WEB_SEARCH_REGION = os.getenv("WEB_SEARCH_REGION", "es-ar")

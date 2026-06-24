@@ -138,6 +138,34 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Social tools no disponibles: %s", e)
 
+    try:
+        from tools.automation_tool import (
+            ManageNicheTool, GenerateContentTool, DetectTrendsTool,
+            ClipContentTool, BatchGenerateTool, VideoAnalyticsTool,
+            DailyBriefingTool,
+        )
+        _tool_registry.register(ManageNicheTool())
+        _tool_registry.register(GenerateContentTool())
+        _tool_registry.register(DetectTrendsTool())
+        _tool_registry.register(ClipContentTool())
+        _tool_registry.register(BatchGenerateTool())
+        _tool_registry.register(VideoAnalyticsTool())
+        _tool_registry.register(DailyBriefingTool())
+    except Exception as e:
+        logger.warning("Automation tools no disponibles: %s", e)
+
+    try:
+        from tools.calendar_tool import CalendarTool
+        _tool_registry.register(CalendarTool())
+    except Exception as e:
+        logger.warning("Calendar tool no disponible: %s", e)
+
+    try:
+        from tools.email_tool import EmailTool
+        _tool_registry.register(EmailTool())
+    except Exception as e:
+        logger.warning("Email tool no disponible: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool

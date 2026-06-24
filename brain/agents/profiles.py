@@ -85,4 +85,19 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         model=OLLAMA_MODEL,
         tool_names=["publish_video", "publish_text", "content_calendar", "web_search", "vault_read"],
     ),
+    "content_creator": AgentProfile(
+        name="Creador de Contenido",
+        system_prompt=(
+            "Sos un creador de contenido y growth hacker experto. Tu especialidad es "
+            "generar contenido viral a escala: guiones, detectar tendencias, clipear "
+            "videos largos, y gestionar múltiples nichos de contenido. Sabés qué "
+            "funciona en cada plataforma y cómo maximizar alcance y engagement. "
+            "Pensás en términos de fábricas de contenido: volumen + calidad + timing."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=[
+            "generate_content", "detect_trends", "clip_content", "manage_niche",
+            "batch_generate", "video_analytics", "web_search",
+        ],
+    ),
 }
