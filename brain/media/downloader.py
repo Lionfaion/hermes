@@ -38,7 +38,6 @@ def download_media(url: str) -> DownloadResult:
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
-        "max_downloads": 1,
     }
 
     try:
