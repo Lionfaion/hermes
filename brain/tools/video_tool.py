@@ -23,12 +23,21 @@ class ReplicateViralTool(BaseTool):
             },
             "voice": {
                 "type": "string",
-                "description": "Voz a usar (es-ar-male, es-ar-female, en-us-male, etc.)",
+                "description": "Voz a usar (es-ar-male, casual-male, alloy, etc.)",
             },
             "format": {
                 "type": "string",
                 "description": "Formato: vertical (TikTok/Reels), horizontal (YouTube), square (Instagram)",
                 "enum": ["vertical", "horizontal", "square"],
+            },
+            "tts_backend": {
+                "type": "string",
+                "description": "Motor de voz: 'edge' (gratis) o 'voxtral' (premium + clonación)",
+                "enum": ["edge", "voxtral"],
+            },
+            "clone_voice": {
+                "type": "boolean",
+                "description": "Si es true, clona la voz del video original (requiere Voxtral/Mistral API key)",
             },
         },
         "required": ["source_url", "new_topic"],
@@ -40,10 +49,17 @@ class ReplicateViralTool(BaseTool):
         new_topic: str,
         voice: str = "es-ar-male",
         format: str = "vertical",
+        tts_backend: str = "",
+        clone_voice: bool = False,
     ) -> str:
         from video.pipeline import replicate_viral, PipelineConfig
 
-        config = PipelineConfig(voice=voice, format=format)
+        config = PipelineConfig(
+            voice=voice,
+            format=format,
+            tts_backend=tts_backend if tts_backend else "",
+            clone_original_voice=clone_voice,
+        )
         result = replicate_viral(source_url, new_topic, config)
 
         if result.success:
@@ -77,7 +93,7 @@ class GenerateVideoTool(BaseTool):
             },
             "voice": {
                 "type": "string",
-                "description": "Voz a usar (es-ar-male, es-ar-female, en-us-male, etc.)",
+                "description": "Voz a usar (es-ar-male, casual-male, alloy, etc.)",
             },
             "format": {
                 "type": "string",
@@ -87,6 +103,15 @@ class GenerateVideoTool(BaseTool):
             "stock_query": {
                 "type": "string",
                 "description": "Búsqueda para stock footage de fondo (en inglés preferido)",
+            },
+            "tts_backend": {
+                "type": "string",
+                "description": "Motor de voz: 'edge' (gratis) o 'voxtral' (premium + clonación)",
+                "enum": ["edge", "voxtral"],
+            },
+            "voice_reference_path": {
+                "type": "string",
+                "description": "Ruta a audio de referencia para clonar voz (solo Voxtral, 2-25 seg)",
             },
         },
         "required": ["script", "title"],
@@ -99,6 +124,8 @@ class GenerateVideoTool(BaseTool):
         voice: str = "es-ar-male",
         format: str = "vertical",
         stock_query: str = "",
+        tts_backend: str = "",
+        voice_reference_path: str = "",
     ) -> str:
         from pathlib import Path
         from config import MEDIA_DOWNLOAD_DIR
@@ -106,14 +133,17 @@ class GenerateVideoTool(BaseTool):
         output_dir = Path(MEDIA_DOWNLOAD_DIR) / "pipeline"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Paso 1: TTS
         from video.tts import generate_speech
         audio_path = str(output_dir / "narration.mp3")
-        tts = generate_speech(script, audio_path, voice=voice)
+        tts = generate_speech(
+            script, audio_path,
+            voice=voice,
+            backend=tts_backend or "",
+            voice_reference_path=voice_reference_path,
+        )
         if not tts.success:
             return f"Error generando voz: {tts.error}"
 
-        # Paso 2: Stock footage
         background_clips = []
         if stock_query:
             try:
@@ -127,7 +157,6 @@ class GenerateVideoTool(BaseTool):
             except Exception:
                 pass
 
-        # Paso 3: Ensamblar
         from video.assembler import assemble_video, VideoProject
 
         safe_title = "".join(c for c in title[:30] if c.isalnum() or c in " -_")
@@ -142,8 +171,59 @@ class GenerateVideoTool(BaseTool):
 
         result = assemble_video(project)
         if result.success:
-            return f"Video generado: {result.output_path}\nDuración: {result.duration:.1f}s"
+            return (
+                f"Video generado: {result.output_path}\n"
+                f"Duración: {result.duration:.1f}s\n"
+                f"Backend voz: {tts.backend}"
+            )
         return f"Error ensamblando: {result.error}"
+
+
+class CloneVoiceTool(BaseTool):
+    name = "clone_voice"
+    description = (
+        "Clona una voz a partir de un audio de referencia (2-25 segundos) usando Voxtral TTS de Mistral. "
+        "Genera audio con esa voz clonada diciendo el texto que le pases. "
+        "Requiere MISTRAL_API_KEY. Soporta clonación cross-lingual (referencia en un idioma, output en otro)."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "Texto que la voz clonada debe decir",
+            },
+            "reference_audio_path": {
+                "type": "string",
+                "description": "Ruta al archivo de audio con la voz a clonar (2-25 segundos, un solo hablante)",
+            },
+            "output_path": {
+                "type": "string",
+                "description": "Ruta donde guardar el audio generado (opcional)",
+            },
+        },
+        "required": ["text", "reference_audio_path"],
+    }
+
+    def execute(self, text: str, reference_audio_path: str, output_path: str = "") -> str:
+        from pathlib import Path
+        from config import MEDIA_DOWNLOAD_DIR
+
+        if not output_path:
+            out_dir = Path(MEDIA_DOWNLOAD_DIR) / "cloned_voices"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            output_path = str(out_dir / "cloned_output.mp3")
+
+        from video.tts import clone_voice
+        result = clone_voice(text, output_path, reference_audio_path)
+
+        if result.success:
+            return (
+                f"Voz clonada exitosamente!\n"
+                f"Audio: {result.audio_path}\n"
+                f"Duración: {result.duration:.1f}s"
+            )
+        return f"Error clonando voz: {result.error}"
 
 
 class AnalyzeViralTool(BaseTool):

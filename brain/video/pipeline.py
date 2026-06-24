@@ -18,6 +18,8 @@ class PipelineConfig:
     background_music: str = ""
     use_stock_footage: bool = True
     stock_query_override: str = ""
+    tts_backend: str = ""
+    clone_original_voice: bool = False
 
 
 @dataclass
@@ -89,7 +91,19 @@ def replicate_viral(
     logger.info("Paso 6: Generando voz...")
     from video.tts import generate_speech
     audio_output = str(output_dir / "narration.mp3")
-    tts = generate_speech(new_script, audio_output, voice=config.voice, rate=config.voice_rate)
+
+    voice_ref = ""
+    if config.clone_original_voice and dl.audio_path:
+        voice_ref = dl.audio_path
+        logger.info("Clonando voz del video original con Voxtral")
+
+    tts = generate_speech(
+        new_script, audio_output,
+        voice=config.voice,
+        rate=config.voice_rate,
+        backend=config.tts_backend,
+        voice_reference_path=voice_ref,
+    )
     if not tts.success:
         result.error = f"Error generando voz: {tts.error}"
         return result

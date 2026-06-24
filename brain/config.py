@@ -73,6 +73,10 @@ ALLOWED_COMMANDS = [
     ).split(",") if c.strip()
 ]
 
+# TTS / Voice
+TTS_BACKEND = os.getenv("TTS_BACKEND", "edge")  # "edge" (gratis) o "voxtral" (premium)
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+
 # Web browsing
 WEB_ENABLED = os.getenv("WEB_ENABLED", "true").lower() == "true"
 WEB_SEARCH_REGION = os.getenv("WEB_SEARCH_REGION", "es-ar")
