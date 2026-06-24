@@ -41,33 +41,43 @@ def download_media(url: str) -> DownloadResult:
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        # Primero chequear duración sin descargar
+        with yt_dlp.YoutubeDL({**ydl_opts, "quiet": True}) as ydl_check:
+            info = ydl_check.extract_info(url, download=False)
             if not info:
                 return DownloadResult(success=False, error="No se pudo obtener info del video")
-
             duration = info.get("duration", 0) or 0
             if duration > MEDIA_MAX_DURATION:
                 return DownloadResult(
                     success=False,
                     error=f"Video demasiado largo ({duration}s, máximo {MEDIA_MAX_DURATION}s)"
                 )
-
-            ydl.download([url])
-
             video_id = info.get("id", "unknown")
-            ext = info.get("ext", "mp4")
-            video_path = str(output_dir / f"{video_id}.{ext}")
+            title = info.get("title", "")
 
-            audio_path = _extract_audio(video_path)
+        # Nueva instancia limpia para descargar
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl_dl:
+            ydl_dl.download([url])
 
-            return DownloadResult(
-                success=True,
-                title=info.get("title", ""),
-                duration=duration,
-                video_path=video_path,
-                audio_path=audio_path,
-            )
+        ext = "mp4"
+        video_path = str(output_dir / f"{video_id}.{ext}")
+        if not Path(video_path).exists():
+            # Buscar el archivo descargado por id
+            candidates = list(output_dir.glob(f"{video_id}.*"))
+            if candidates:
+                video_path = str(candidates[0])
+            else:
+                return DownloadResult(success=False, error="Archivo descargado no encontrado")
+
+        audio_path = _extract_audio(video_path)
+
+        return DownloadResult(
+            success=True,
+            title=title,
+            duration=duration,
+            video_path=video_path,
+            audio_path=audio_path,
+        )
     except Exception as e:
         logger.error("Error descargando %s: %s", url, e)
         return DownloadResult(success=False, error=str(e))
