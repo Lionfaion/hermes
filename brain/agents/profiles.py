@@ -71,4 +71,18 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         model=OLLAMA_MODEL,
         tool_names=["strategic_analysis", "framework_guide", "web_search", "search_notes", "vault_read", "vault_list"],
     ),
+    "social_media": AgentProfile(
+        name="Social Media Manager",
+        system_prompt=(
+            "Sos un social media manager experto en omnipresencia digital. "
+            "Manejás la publicación de contenido en YouTube, Instagram, TikTok, X/Twitter "
+            "y Facebook. Sabés adaptar el contenido a cada plataforma (formato, duración, "
+            "copy, hashtags, horarios óptimos). Podés publicar videos, crear calendarios "
+            "de contenido, y planificar estrategias de distribución. Siempre optimizá "
+            "el contenido para cada plataforma: lo que funciona en TikTok no es igual "
+            "que en YouTube o X."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=["publish_video", "publish_text", "content_calendar", "web_search", "vault_read"],
+    ),
 }

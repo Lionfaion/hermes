@@ -80,6 +80,12 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 # Google Stitch (AI UI design)
 STITCH_API_KEY = os.getenv("STITCH_API_KEY", "")
 
+# Social media publishing
+YOUTUBE_CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID", "")
+YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET", "")
+YOUTUBE_REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN", "")
+MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "")
+
 # Web browsing
 WEB_ENABLED = os.getenv("WEB_ENABLED", "true").lower() == "true"
 WEB_SEARCH_REGION = os.getenv("WEB_SEARCH_REGION", "es-ar")

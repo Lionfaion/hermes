@@ -130,6 +130,14 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Strategy tools no disponibles: %s", e)
 
+    try:
+        from tools.social_tool import PublishVideoTool, PublishTextTool, ContentCalendarTool
+        _tool_registry.register(PublishVideoTool())
+        _tool_registry.register(PublishTextTool())
+        _tool_registry.register(ContentCalendarTool())
+    except Exception as e:
+        logger.warning("Social tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
