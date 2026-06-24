@@ -5,8 +5,14 @@ Hermes Telegram Bot — secured with rate limiting and input validation.
 import asyncio
 import faulthandler
 import logging
+import os
 import sys
 from pathlib import Path
+
+# Asegurar que ffmpeg esté en PATH
+_FFMPEG_BIN = r"C:\Users\chsan\ffmpeg\bin"
+if _FFMPEG_BIN not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _FFMPEG_BIN + ";" + os.environ.get("PATH", "")
 
 # Dump stack trace on crash (Windows access violations, etc.)
 faulthandler.enable()
@@ -55,6 +61,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Hola, soy {ASSISTANT_NAME}, tu asistente de IA personal.\n\n"
         "Podés escribirme o mandarme audios de voz.\n\n"
         "Comandos:\n"
+        "/viral [URL] [tema] — Replicar un video viral con nuevo tema\n"
         "/remember [texto] — Guardar algo en Obsidian para que lo recuerde siempre\n"
         "/status  — Estado del servidor de IA\n"
         "/clear   — Borrar memoria de conversación\n"
@@ -82,6 +89,83 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     _get_session(update.effective_user.id).new_session()
     await update.message.reply_text("Nueva sesión iniciada.")
+
+
+async def cmd_viral(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update.effective_user.id):
+        return
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Uso: /viral [URL] [tema]\n"
+            "Ejemplo: /viral https://tiktok.com/... inversiones en Argentina"
+        )
+        return
+
+    url = args[0]
+    topic = " ".join(args[1:])
+    msg = await update.message.reply_text(f"Generando video sobre '{topic}'... esto tarda 2-5 minutos.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(None, _run_viral_pipeline, url, topic)
+        if not result["success"]:
+            await msg.edit_text(f"Error en el pipeline: {result['error']}")
+            return
+
+        video_path = result["video_path"]
+        await msg.edit_text(f"Video listo. Subiendo a Telegram y YouTube...")
+
+        # Mandar video por Telegram (para TikTok manual)
+        with open(video_path, "rb") as f:
+            await update.message.reply_video(
+                video=f,
+                caption=f"{topic}\n\nGenerado por Hermes — listo para subir a TikTok",
+                filename=Path(video_path).name,
+            )
+
+        # Publicar en YouTube via Make.com
+        pub_result = await loop.run_in_executor(None, _publish_video, video_path, topic, result.get("script", ""))
+        status = "YouTube: publicado" if pub_result.get("success") else f"YouTube: {pub_result.get('error','error')}"
+        await msg.edit_text(f"Listo.\n{status}\nPasos completados: {', '.join(result['steps'])}")
+
+    except Exception as e:
+        logger.error("cmd_viral error: %s", e, exc_info=True)
+        await msg.edit_text(f"Error inesperado: {e}")
+
+
+def _run_viral_pipeline(url: str, topic: str) -> dict:
+    try:
+        import config  # noqa — carga .env
+        from video.pipeline import replicate_viral, PipelineConfig
+        cfg = PipelineConfig(voice="es-ar-male", format="vertical", use_stock_footage=True)
+        r = replicate_viral(source_url=url, new_topic=topic, config=cfg)
+        return {
+            "success": r.success,
+            "video_path": r.video_path,
+            "script": r.script,
+            "steps": r.steps_completed,
+            "error": r.error,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "video_path": "", "script": "", "steps": []}
+
+
+def _publish_video(video_path: str, title: str, script: str) -> dict:
+    try:
+        import config  # noqa
+        from social.publisher import publish_video
+        hashtags = ["viral", "hermes", "ia", "contenido"]
+        return publish_video(
+            video_path=video_path,
+            title=title[:90],
+            description=script[:400] if script else title,
+            hashtags=hashtags,
+            platforms=["youtube"],
+            privacy="public",
+        )
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -224,6 +308,7 @@ def main() -> None:
     app.add_handler(CommandHandler("clear",    cmd_clear))
     app.add_handler(CommandHandler("new",      cmd_new))
     app.add_handler(CommandHandler("remember", cmd_remember))
+    app.add_handler(CommandHandler("viral",   cmd_viral))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
