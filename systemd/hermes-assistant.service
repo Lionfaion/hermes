@@ -1,0 +1,32 @@
+[Unit]
+Description=Hermes AI Assistant
+Documentation=https://github.com/your-repo/hermes-assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+WorkingDirectory=/opt/hermes-assistant/brain
+
+ExecStart=/opt/hermes-assistant/venv/bin/python /opt/hermes-assistant/brain/main.py
+
+Restart=on-failure
+RestartSec=15
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+# Logging — view with: journalctl -u hermes-assistant -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hermes
+
+# Minimal security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/hermes-assistant/brain/data
+
+[Install]
+WantedBy=multi-user.target
