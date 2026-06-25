@@ -1,10 +1,31 @@
 """Análisis de videos virales: extrae estructura, hooks y patrones replicables."""
 
 import logging
+import re
 
 from inference_client import chat
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_script(text: str) -> str:
+    """Elimina artefactos de formato que el TTS leería literalmente."""
+    # Encabezados markdown: ## Intro → vacío
+    text = re.sub(r'^#{1,6}\s+.*$', '', text, flags=re.MULTILINE)
+    # Negrita/cursiva: **texto** → texto
+    text = re.sub(r'\*{1,3}([^*\n]+)\*{1,3}', r'\1', text)
+    # Etiquetas entre corchetes: [Intro], [Espacio], [Sección 1] → vacío
+    text = re.sub(r'\[[^\]]{1,30}\]', '', text)
+    # Indicaciones entre paréntesis cortas: (pausa), (música), (efecto) → vacío
+    text = re.sub(r'\([^)]{1,25}\)', '', text)
+    # Líneas que son solo guiones/puntos separadores
+    text = re.sub(r'^[-–—=*_]{2,}\s*$', '', text, flags=re.MULTILINE)
+    # Colapsar múltiples líneas vacías en una sola
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # Limpiar espacios sobrantes al inicio de cada línea
+    lines = [line.strip() for line in text.splitlines()]
+    text = '\n'.join(line for line in lines if line)
+    return text.strip()
 
 ANALYSIS_PROMPT = """Analizá este video viral en detalle. Extraé la siguiente información en formato estructurado:
 
@@ -40,20 +61,26 @@ Basate en esta información del video:
 
 REWRITE_PROMPT = """Basándote en el análisis de este video viral, creá un nuevo guión original que replique la misma estructura y técnicas pero con contenido diferente.
 
-REGLAS:
-1. Mantené el mismo formato y estructura que funciona
-2. El hook debe ser igual de potente
-3. Cambiá el tema/contenido pero mantené el estilo
-4. Escribí el guión tal como se va a narrar (sin indicaciones técnicas)
-5. Incluí pausas naturales con "..." donde corresponda
-6. Duración similar al original
+REGLAS ABSOLUTAS — VIOLACIONES ARRUINAN EL AUDIO:
+1. Respondé ÚNICAMENTE con el texto que se va a narrar en voz alta, palabra por palabra
+2. PROHIBIDO usar corchetes: NO [Intro], NO [Espacio], NO [Hook], NO [Sección], NO [CTA], NO [Outro]
+3. PROHIBIDO usar Markdown: NO #, NO ##, NO **, NO *, NO __
+4. PROHIBIDO escribir indicaciones técnicas, nombres de sección o cualquier texto que no sea narración pura
+5. Las pausas van con "..." únicamente, nada más
+6. El guión debe poder leerse de corrido sin que suene raro
+
+REGLAS DE CONTENIDO:
+- Mantené el mismo formato y estructura que funciona
+- El hook debe ser igual de potente en los primeros 3 segundos
+- Cambiá el tema/contenido pero mantené el estilo y ritmo
+- Duración similar al original
 
 ANÁLISIS DEL VIDEO ORIGINAL:
 {analysis}
 
 TEMA PARA EL NUEVO VIDEO: {topic}
 
-Respondé SOLO con el guión narrado, nada más.
+RECORDATORIO FINAL: solo texto narrado, sin corchetes, sin markdown, sin etiquetas.
 """
 
 
@@ -88,9 +115,11 @@ def generate_new_script(analysis: str, topic: str, model: str = None) -> str:
     messages = [
         {"role": "system", "content": (
             "Sos un guionista experto en contenido viral para redes sociales. "
-            "Escribís guiones que enganchan desde el primer segundo."
+            "Escribís guiones que enganchan desde el primer segundo. "
+            "Escribís SOLO el texto narrado, sin corchetes, sin markdown, sin etiquetas."
         )},
         {"role": "user", "content": prompt},
     ]
 
-    return chat(messages, model)
+    raw = chat(messages, model)
+    return sanitize_script(raw)
