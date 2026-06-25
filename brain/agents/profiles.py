@@ -37,12 +37,12 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
     "media_specialist": AgentProfile(
         name="Especialista en Media",
         system_prompt=(
-            "Sos un especialista en análisis de contenido multimedia. Analizás videos, "
-            "audios e imágenes para extraer información útil. Describí lo que encontrás "
-            "de forma detallada y organizada."
+            "Sos un especialista en análisis y creación de contenido multimedia. Analizás videos, "
+            "audios e imágenes para extraer información útil. También generás imágenes y videos "
+            "con Google AI. Describí lo que encontrás de forma detallada y organizada."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["analyze_media", "web_fetch", "web_search"],
+        tool_names=["analyze_media", "web_fetch", "web_search", "generate_image", "produce_video"],
     ),
     "designer": AgentProfile(
         name="Diseñador",
@@ -97,7 +97,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         model=OLLAMA_MODEL,
         tool_names=[
             "generate_content", "detect_trends", "clip_content", "manage_niche",
-            "batch_generate", "video_analytics", "web_search",
+            "batch_generate", "video_analytics", "web_search", "produce_video", "generate_image",
         ],
     ),
     "sales": AgentProfile(

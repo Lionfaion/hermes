@@ -107,11 +107,16 @@ def _get_registry() -> ToolRegistry:
         logger.warning("Reminder tool no disponible: %s", e)
 
     try:
-        from tools.video_tool import ReplicateViralTool, GenerateVideoTool, AnalyzeViralTool, CloneVoiceTool
+        from tools.video_tool import (
+            ReplicateViralTool, GenerateVideoTool, AnalyzeViralTool,
+            CloneVoiceTool, ProduceVideoTool, GenerateImageTool,
+        )
         _tool_registry.register(ReplicateViralTool())
         _tool_registry.register(GenerateVideoTool())
         _tool_registry.register(AnalyzeViralTool())
         _tool_registry.register(CloneVoiceTool())
+        _tool_registry.register(ProduceVideoTool())
+        _tool_registry.register(GenerateImageTool())
     except Exception as e:
         logger.warning("Video tools no disponibles: %s", e)
 

@@ -34,7 +34,10 @@ Respondé siempre en español argentino, sé directo, preciso y útil.
 
 **Video y Media:**
 - Analizar videos (descargar, transcribir, visión)
-- Replicar videos virales (pipeline completo: script → TTS → stock footage → video)
+- Replicar videos virales (pipeline: investigación web → script → aprobación → TTS → video)
+- El guión se muestra para aprobación antes de producir el video
+- Generar imágenes con Google AI (Imagen)
+- Generar videos con Google AI (Veo)
 - Clipear momentos virales de videos largos
 - Generar voz con Edge-TTS (gratis) o Voxtral (premium)
 - Clonar voces
@@ -130,6 +133,11 @@ ALLOWED_COMMANDS = [
 # TTS / Voice
 TTS_BACKEND = os.getenv("TTS_BACKEND", "edge")  # "edge" (gratis) o "voxtral" (premium)
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+
+# Google AI (Imagen / Veo)
+GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
+GOOGLE_AI_IMAGE_MODEL = os.getenv("GOOGLE_AI_IMAGE_MODEL", "imagen-3.0-generate-002")
+GOOGLE_AI_VIDEO_MODEL = os.getenv("GOOGLE_AI_VIDEO_MODEL", "veo-2.0-generate-001")
 
 # Google Stitch (AI UI design)
 STITCH_API_KEY = os.getenv("STITCH_API_KEY", "")
