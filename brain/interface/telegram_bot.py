@@ -122,6 +122,8 @@ async def cmd_viral(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 video=f,
                 caption=f"{topic}\n\nGenerado por Hermes — listo para subir a TikTok",
                 filename=Path(video_path).name,
+                write_timeout=300,
+                read_timeout=120,
             )
 
         # Publicar en YouTube via Make.com
@@ -301,7 +303,15 @@ def main() -> None:
         logger.error("TELEGRAM_TOKEN no configurado.")
         sys.exit(1)
 
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(TELEGRAM_TOKEN)
+        .read_timeout(60)
+        .write_timeout(300)
+        .connect_timeout(30)
+        .pool_timeout(300)
+        .build()
+    )
     app.add_handler(CommandHandler("start",    cmd_start))
     app.add_handler(CommandHandler("help",     cmd_start))
     app.add_handler(CommandHandler("status",   cmd_status))
