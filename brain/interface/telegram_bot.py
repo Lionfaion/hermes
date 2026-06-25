@@ -9,6 +9,8 @@ import os
 import sys
 from pathlib import Path
 
+import httpx
+
 # Asegurar que ffmpeg esté en PATH
 _FFMPEG_BIN = r"C:\Users\chsan\ffmpeg\bin"
 if _FFMPEG_BIN not in os.environ.get("PATH", ""):
@@ -39,6 +41,26 @@ from security import validate_message
 
 logger = logging.getLogger(__name__)
 _sessions: dict = {}
+
+
+async def _send_video_direct(token: str, chat_id: int, video_path: str, caption: str) -> bool:
+    """Upload video via raw httpx POST with 600s timeout — bypasses PTB timeout limits."""
+    api_url = f"https://api.telegram.org/bot{token}/sendVideo"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0)) as client:
+            with open(video_path, "rb") as f:
+                resp = await client.post(
+                    api_url,
+                    data={"chat_id": str(chat_id), "caption": caption},
+                    files={"video": (Path(video_path).name, f, "video/mp4")},
+                )
+        result = resp.json()
+        if not result.get("ok"):
+            logger.error("Telegram API error: %s", result)
+        return result.get("ok", False)
+    except Exception as e:
+        logger.error("Error subiendo video directo: %s", e)
+        return False
 
 
 def _get_session(user_id: int) -> HermesAssistant:
@@ -114,16 +136,24 @@ async def cmd_viral(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         video_path = result["video_path"]
-        await msg.edit_text(f"Video listo. Subiendo a Telegram y YouTube...")
 
-        # Mandar video por Telegram (para TikTok manual)
-        with open(video_path, "rb") as f:
-            await update.message.reply_video(
-                video=f,
-                caption=f"{topic}\n\nGenerado por Hermes — listo para subir a TikTok",
-                filename=Path(video_path).name,
-                write_timeout=300,
-                read_timeout=120,
+        # Comprimir si el video es demasiado grande para Telegram (<= 20 MB)
+        from video.assembler import compress_for_telegram
+        compressed = await loop.run_in_executor(None, compress_for_telegram, video_path, 20)
+        size_mb = Path(compressed).stat().st_size / (1024 * 1024)
+        await msg.edit_text(f"Video listo ({size_mb:.1f} MB). Subiendo a Telegram y YouTube...")
+
+        # Subir con httpx directo (600s timeout, bypasea PTB)
+        ok = await _send_video_direct(
+            TELEGRAM_TOKEN,
+            update.effective_chat.id,
+            compressed,
+            f"{topic}\n\nGenerado por Hermes — listo para subir a TikTok",
+        )
+        if not ok:
+            await update.message.reply_text(
+                f"No pude enviar el video por Telegram (podría ser demasiado grande o lento). "
+                f"El archivo está en el servidor: {Path(compressed).name}"
             )
 
         # Publicar en YouTube via Make.com

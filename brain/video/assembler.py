@@ -82,6 +82,34 @@ def assemble_video(project: VideoProject) -> AssembleResult:
         return AssembleResult(success=False, error=str(e))
 
 
+def compress_for_telegram(video_path: str, max_mb: int = 20) -> str:
+    """Recompress video so it fits Telegram's upload limit. Returns path (original if already small enough)."""
+    path = Path(video_path)
+    try:
+        size_mb = path.stat().st_size / (1024 * 1024)
+    except OSError:
+        return video_path
+    if size_mb <= max_mb:
+        return video_path
+
+    duration = _get_duration(video_path)
+    if duration <= 0:
+        return video_path
+
+    output = str(path.with_stem(path.stem + "_tg"))
+    target_kbps = max(200, int(max_mb * 8 * 1024 / duration) - 128)
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", video_path,
+         "-c:v", "libx264", "-preset", "ultrafast",
+         "-b:v", f"{target_kbps}k",
+         "-c:a", "aac", "-b:a", "128k",
+         "-movflags", "+faststart",
+         output],
+        capture_output=True, timeout=300,
+    )
+    return output if Path(output).exists() else video_path
+
+
 def _get_duration(file_path: str) -> float:
     try:
         result = subprocess.run(
