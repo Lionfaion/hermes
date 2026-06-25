@@ -116,6 +116,23 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update.effective_user.id):
+        return
+    log_file = Path(__file__).resolve().parent.parent.parent / "logs" / "hermes.log"
+    if not log_file.exists():
+        await update.message.reply_text(f"No se encontró el archivo de log en:\n{log_file}")
+        return
+    try:
+        lines = log_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+        last = "\n".join(lines[-60:]) if len(lines) > 60 else "\n".join(lines)
+        msg = f"Últimas líneas del log ({log_file.name}):\n\n{last}"
+        for i in range(0, len(msg), 4000):
+            await update.message.reply_text(msg[i:i+4000])
+    except Exception as e:
+        await update.message.reply_text(f"Error leyendo log: {e}")
+
+
 async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_allowed(update.effective_user.id):
         return
@@ -408,6 +425,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help",     cmd_start))
     app.add_handler(CommandHandler("status",   cmd_status))
     app.add_handler(CommandHandler("tools",    cmd_tools))
+    app.add_handler(CommandHandler("logs",     cmd_logs))
     app.add_handler(CommandHandler("clear",    cmd_clear))
     app.add_handler(CommandHandler("new",      cmd_new))
     app.add_handler(CommandHandler("remember", cmd_remember))
