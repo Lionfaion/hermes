@@ -1,0 +1,10 @@
+[Unit]
+Description=Chequear actualizaciones de Hermes cada 5 minutos
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

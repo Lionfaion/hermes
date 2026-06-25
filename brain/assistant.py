@@ -61,6 +61,8 @@ _OFFLINE_MSG = (
 _skills_manager = None
 _interaction_logger = None
 _tool_registry = None
+_vault_searcher = None
+_knowledge_graph = None
 
 
 def _get_skills():
@@ -83,6 +85,32 @@ def _get_ilog():
         except Exception as e:
             logger.warning("InteractionLogger no disponible: %s", e)
     return _interaction_logger
+
+
+def _get_vault_searcher():
+    """Obtiene el buscador de vault para RAG automático."""
+    global _vault_searcher
+    if _vault_searcher is None and RAG_ENABLED:
+        try:
+            from rag.indexer import VaultIndexer
+            from rag.searcher import VaultSearcher
+            indexer = VaultIndexer(VAULT_PATH, CHROMA_PATH)
+            _vault_searcher = VaultSearcher(indexer)
+        except Exception as e:
+            logger.warning("VaultSearcher no disponible: %s", e)
+    return _vault_searcher
+
+
+def _get_knowledge_graph():
+    """Obtiene el grafo de conocimiento de Obsidian."""
+    global _knowledge_graph
+    if _knowledge_graph is None and RAG_ENABLED:
+        try:
+            from rag.graph import KnowledgeGraph
+            _knowledge_graph = KnowledgeGraph(VAULT_PATH)
+        except Exception as e:
+            logger.warning("KnowledgeGraph no disponible: %s", e)
+    return _knowledge_graph
 
 
 def _get_registry() -> ToolRegistry:
@@ -147,11 +175,16 @@ def _get_registry() -> ToolRegistry:
         logger.warning("Reminder tool no disponible: %s", e)
 
     try:
-        from tools.video_tool import ReplicateViralTool, GenerateVideoTool, AnalyzeViralTool, CloneVoiceTool
+        from tools.video_tool import (
+            ReplicateViralTool, GenerateVideoTool, AnalyzeViralTool,
+            CloneVoiceTool, ProduceVideoTool, GenerateImageTool,
+        )
         _tool_registry.register(ReplicateViralTool())
         _tool_registry.register(GenerateVideoTool())
         _tool_registry.register(AnalyzeViralTool())
         _tool_registry.register(CloneVoiceTool())
+        _tool_registry.register(ProduceVideoTool())
+        _tool_registry.register(GenerateImageTool())
     except Exception as e:
         logger.warning("Video tools no disponibles: %s", e)
 
@@ -178,12 +211,121 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Social tools no disponibles: %s", e)
 
+    try:
+        from tools.automation_tool import (
+            ManageNicheTool, GenerateContentTool, DetectTrendsTool,
+            ClipContentTool, BatchGenerateTool, VideoAnalyticsTool,
+            DailyBriefingTool,
+        )
+        _tool_registry.register(ManageNicheTool())
+        _tool_registry.register(GenerateContentTool())
+        _tool_registry.register(DetectTrendsTool())
+        _tool_registry.register(ClipContentTool())
+        _tool_registry.register(BatchGenerateTool())
+        _tool_registry.register(VideoAnalyticsTool())
+        _tool_registry.register(DailyBriefingTool())
+    except Exception as e:
+        logger.warning("Automation tools no disponibles: %s", e)
+
+    try:
+        from tools.calendar_tool import CalendarTool
+        _tool_registry.register(CalendarTool())
+    except Exception as e:
+        logger.warning("Calendar tool no disponible: %s", e)
+
+    try:
+        from tools.email_tool import EmailTool
+        _tool_registry.register(EmailTool())
+    except Exception as e:
+        logger.warning("Email tool no disponible: %s", e)
+
+    try:
+        from tools.expansion_tools import (
+            LeadGenTool, FreelanceTool, SEOTool, EcommerceTool,
+            MarketMonitorTool, CourseFactoryTool, MeetingTool,
+            ReputationTool, LegalTool, CRMTool,
+        )
+        _tool_registry.register(LeadGenTool())
+        _tool_registry.register(FreelanceTool())
+        _tool_registry.register(SEOTool())
+        _tool_registry.register(EcommerceTool())
+        _tool_registry.register(MarketMonitorTool())
+        _tool_registry.register(CourseFactoryTool())
+        _tool_registry.register(MeetingTool())
+        _tool_registry.register(ReputationTool())
+        _tool_registry.register(LegalTool())
+        _tool_registry.register(CRMTool())
+    except Exception as e:
+        logger.warning("Expansion tools no disponibles: %s", e)
+
+    try:
+        from tools.github_tool import GitHubTool
+        _tool_registry.register(GitHubTool())
+    except Exception as e:
+        logger.warning("GitHub tool no disponible: %s", e)
+
+    # Background tasks
+    try:
+        from tools.task_tool import CreateBackgroundTaskTool, CheckTasksTool, CancelTaskTool
+        _tool_registry.register(CreateBackgroundTaskTool(registry=_tool_registry))
+        _tool_registry.register(CheckTasksTool())
+        _tool_registry.register(CancelTaskTool())
+    except Exception as e:
+        logger.warning("Task tools no disponibles: %s", e)
+
+    # Cron jobs
+    try:
+        from tools.cron_tool import CreateCronJobTool, ListCronJobsTool, DeleteCronJobTool
+        _tool_registry.register(CreateCronJobTool())
+        _tool_registry.register(ListCronJobsTool())
+        _tool_registry.register(DeleteCronJobTool())
+    except Exception as e:
+        logger.warning("Cron tools no disponibles: %s", e)
+
+    # Knowledge Graph
+    try:
+        from tools.graph_tool import GraphConnectionsTool, GraphSearchTool
+        _tool_registry.register(GraphConnectionsTool())
+        _tool_registry.register(GraphSearchTool())
+    except Exception as e:
+        logger.warning("Graph tools no disponibles: %s", e)
+
+    # Specs (Spec Driven Development)
+    try:
+        from tools.spec_tool import (
+            CreateSpecTool, ListSpecsTool, GetSpecTool,
+            ExecuteSpecTool, DeleteSpecTool,
+        )
+        _tool_registry.register(CreateSpecTool())
+        _tool_registry.register(ListSpecsTool())
+        _tool_registry.register(GetSpecTool())
+        _tool_registry.register(ExecuteSpecTool(registry=_tool_registry))
+        _tool_registry.register(DeleteSpecTool())
+    except Exception as e:
+        logger.warning("Spec tools no disponibles: %s", e)
+
+    # Director (multi-agent orchestration)
+    try:
+        from tools.director_tool import DirectorTool
+        _tool_registry.register(DirectorTool(registry=_tool_registry))
+    except Exception as e:
+        logger.warning("Director tool no disponible: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
             _tool_registry.register(DelegateToAgentTool(_tool_registry))
         except Exception as e:
             logger.warning("Agent orchestrator no disponible: %s", e)
+
+    # Start cron scheduler
+    try:
+        from background.cron import CronScheduler
+        scheduler = CronScheduler()
+        scheduler.set_registry(_tool_registry)
+        scheduler.start()
+    except Exception as e:
+        logger.warning("Cron scheduler no iniciado: %s", e)
 
     logger.info("Tools registradas: %s", _tool_registry.list_tools())
     return _tool_registry
@@ -286,6 +428,12 @@ class HermesAssistant:
             if injection:
                 system_content += f"\n\n[Comportamiento aprendido de experiencia]\n{injection}"
 
+        # RAG automático: buscar en Obsidian vault + knowledge graph
+        if user_input and RAG_ENABLED:
+            vault_context = self._get_vault_context(user_input)
+            if vault_context:
+                system_content += f"\n\n{vault_context}"
+
         if TOOL_CALLING_ENABLED:
             tool_names = self.registry.list_tools()
             if tool_names:
@@ -298,6 +446,34 @@ class HermesAssistant:
         messages = [{"role": "system", "content": system_content}]
         messages += get_history(self.session_id)
         return messages
+
+    def _get_vault_context(self, query: str) -> str:
+        """Busca contexto relevante en el vault de Obsidian (RAG + Knowledge Graph)."""
+        parts = []
+
+        # Semantic search (RAG)
+        searcher = _get_vault_searcher()
+        if searcher:
+            try:
+                context = searcher.build_context(query)
+                if context:
+                    parts.append(context)
+                    logger.debug("RAG automático inyectó contexto para: %s", query[:50])
+            except Exception as e:
+                logger.warning("RAG automático falló: %s", e)
+
+        # Knowledge Graph context
+        graph = _get_knowledge_graph()
+        if graph:
+            try:
+                graph_context = graph.build_context_for_query(query)
+                if graph_context:
+                    parts.append(graph_context)
+                    logger.debug("Graph inyectó contexto para: %s", query[:50])
+            except Exception as e:
+                logger.warning("Knowledge Graph falló: %s", e)
+
+        return "\n\n".join(parts)
 
     def respond(self, user_input: str) -> str:
         if not user_input.strip():

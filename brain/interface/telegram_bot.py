@@ -36,11 +36,12 @@ from telegram.ext import (
 
 from assistant import HermesAssistant
 from inference_client import is_online
-from config import ASSISTANT_NAME, TELEGRAM_TOKEN, TELEGRAM_ALLOWED_USERS, DATA_DIR
+from config import ASSISTANT_NAME, TELEGRAM_TOKEN, TELEGRAM_ALLOWED_USERS, DATA_DIR, TTS_BACKEND
 from security import validate_message
 
 logger = logging.getLogger(__name__)
 _sessions: dict = {}
+_voice_mode: dict = {}
 
 
 async def _send_video_direct(token: str, chat_id: int, video_path: str, caption: str) -> bool:
@@ -84,11 +85,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Podés escribirme o mandarme audios de voz.\n\n"
         "Comandos:\n"
         "/viral [URL] [tema] — Replicar un video viral con nuevo tema\n"
-        "/remember [texto] — Guardar algo en Obsidian para que lo recuerde siempre\n"
-        "/status  — Estado del servidor de IA\n"
-        "/clear   — Borrar memoria de conversación\n"
-        "/new     — Nueva sesión\n"
-        "/help    — Mostrar esta ayuda"
+        "/remember [texto] — Guardar algo en Obsidian\n"
+        "/voice  — Activar/desactivar respuestas por audio\n"
+        "/status — Estado del servidor de IA\n"
+        "/clear  — Borrar memoria de conversación\n"
+        "/new    — Nueva sesión\n"
+        "/help   — Mostrar esta ayuda"
     )
 
 
@@ -229,6 +231,35 @@ async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(f"Error al guardar: {e}")
 
 
+async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update.effective_user.id):
+        return
+    uid = update.effective_user.id
+    _voice_mode[uid] = not _voice_mode.get(uid, False)
+    state = "activado" if _voice_mode[uid] else "desactivado"
+    await update.message.reply_text(f"Modo voz {state}. Te respondo con audio {'🔊' if _voice_mode[uid] else '📝'}.")
+
+
+async def _send_voice_reply(update: Update, text: str) -> None:
+    try:
+        from video.tts import generate_speech
+        voice_dir = DATA_DIR / "voice"
+        voice_dir.mkdir(parents=True, exist_ok=True)
+        output_path = str(voice_dir / f"reply_{update.message.message_id}.mp3")
+        result = generate_speech(text[:2000], output_path=output_path)
+        if result and Path(result).exists():
+            with open(result, "rb") as audio:
+                await update.message.reply_voice(voice=audio)
+            Path(result).unlink(missing_ok=True)
+            srt = Path(result).with_suffix(".srt")
+            srt.unlink(missing_ok=True)
+            return
+    except Exception as e:
+        logger.warning("TTS falló, respondiendo con texto: %s", e)
+    for i in range(0, len(text), 4000):
+        await update.message.reply_text(text[i: i + 4000])
+
+
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
 
@@ -271,8 +302,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if not response:
             return
 
-        for i in range(0, len(response), 4000):
-            await update.message.reply_text(response[i: i + 4000])
+        await _send_voice_reply(update, response)
     except Exception as e:
         logger.error("Error procesando audio: %s", e)
         await update.message.reply_text(f"Error procesando audio: {e}")
@@ -303,8 +333,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not response:
         return
 
-    for i in range(0, len(response), 4000):
-        await update.message.reply_text(response[i: i + 4000])
+    if _voice_mode.get(user_id, False):
+        await _send_voice_reply(update, response)
+    else:
+        for i in range(0, len(response), 4000):
+            await update.message.reply_text(response[i: i + 4000])
 
 
 async def _run(app: Application) -> None:
@@ -348,7 +381,8 @@ def main() -> None:
     app.add_handler(CommandHandler("clear",    cmd_clear))
     app.add_handler(CommandHandler("new",      cmd_new))
     app.add_handler(CommandHandler("remember", cmd_remember))
-    app.add_handler(CommandHandler("viral",   cmd_viral))
+    app.add_handler(CommandHandler("viral",    cmd_viral))
+    app.add_handler(CommandHandler("voice",    cmd_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 

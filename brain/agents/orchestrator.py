@@ -21,6 +21,11 @@ class DelegateToAgentTool(BaseTool):
         "- designer: Diseño web, landing pages, UI/UX con Google Stitch\n"
         "- strategist: Planificación estratégica, análisis de negocio (FODA, Pareto, Blue Ocean, Eisenhower, Customer Journey)\n"
         "- social_media: Publicación en redes sociales, calendarios de contenido, omnipresencia digital\n"
+        "- content_creator: Generación masiva de contenido, tendencias, clipping, nichos\n"
+        "- sales: Prospección, leads, outreach, freelance, CRM\n"
+        "- business: Ecommerce, SEO, cursos online, análisis de mercado\n"
+        "- legal: Análisis de contratos, borradores legales, contra-propuestas\n"
+        "- director: Descompone tareas complejas en subtareas y coordina múltiples agentes\n"
         "Úsala cuando la tarea requiera trabajo profundo de un especialista."
     )
     parameters = {
