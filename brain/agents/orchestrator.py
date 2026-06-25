@@ -25,6 +25,7 @@ class DelegateToAgentTool(BaseTool):
         "- sales: Prospección, leads, outreach, freelance, CRM\n"
         "- business: Ecommerce, SEO, cursos online, análisis de mercado\n"
         "- legal: Análisis de contratos, borradores legales, contra-propuestas\n"
+        "- director: Descompone tareas complejas en subtareas y coordina múltiples agentes\n"
         "Úsala cuando la tarea requiera trabajo profundo de un especialista."
     )
     parameters = {

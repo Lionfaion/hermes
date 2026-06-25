@@ -136,4 +136,15 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         model=OLLAMA_MODEL,
         tool_names=["legal_assistant", "analyze_file", "web_search"],
     ),
+    "director": AgentProfile(
+        name="Director",
+        system_prompt=(
+            "Sos un director de proyectos experto. Tu trabajo es descomponer tareas "
+            "complejas en pasos ejecutables y coordinar múltiples agentes especializados. "
+            "Analizás la tarea, identificás qué agentes son necesarios, definís el orden "
+            "de ejecución y las dependencias, y sintetizás los resultados en una respuesta final."
+        ),
+        model=OLLAMA_MODEL,
+        tool_names=["delegate_to_agent", "web_search", "search_notes"],
+    ),
 }

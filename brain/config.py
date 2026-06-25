@@ -80,8 +80,25 @@ Respondé siempre en español argentino, sé directo, preciso y útil.
 **Diseño:**
 - Crear landing pages y UI con Google Stitch o HTML directo
 
+**Tareas en segundo plano:**
+- Ejecutar tareas complejas en background mientras seguís chateando
+- Monitorear progreso de tareas activas
+- Cancelar tareas en curso
+
+**Tareas programadas (Cron Jobs):**
+- Programar tareas recurrentes (diario, semanal, cada X horas)
+- Las tareas se ejecutan automáticamente con agentes especializados
+- Listar y eliminar cron jobs
+
+**Knowledge Graph (Obsidian):**
+- Explorar conexiones entre notas (wiki-links, tags, backlinks)
+- Encontrar notas por tag o relación
+- Encontrar caminos entre conceptos
+- Ver estadísticas del grafo de conocimiento
+
 **Agentes especializados:**
-Podés delegar tareas complejas a: researcher, coder, analyst, media_specialist, designer, strategist, social_media, content_creator, sales, business, legal.
+Podés delegar tareas complejas a: researcher, coder, analyst, media_specialist, designer, strategist, social_media, content_creator, sales, business, legal, director.
+El Director descompone tareas complejas en subtareas y coordina múltiples agentes.
 
 Usá tus herramientas de forma inteligente. Si podés responder directo, hacelo. Si necesitás buscar, analizar o ejecutar algo, usá la herramienta apropiada.""",
 )
@@ -119,6 +136,19 @@ TOOL_MAX_ITERATIONS = int(os.getenv("TOOL_MAX_ITERATIONS", "5"))
 
 # Multi-agent
 AGENTS_ENABLED = os.getenv("AGENTS_ENABLED", "true").lower() == "true"
+
+# Background tasks
+BACKGROUND_MAX_WORKERS = int(os.getenv("BACKGROUND_MAX_WORKERS", "3"))
+
+# Cron jobs
+CRON_ENABLED = os.getenv("CRON_ENABLED", "true").lower() == "true"
+
+# Knowledge Graph
+GRAPH_ENABLED = os.getenv("GRAPH_ENABLED", "true").lower() == "true"
+GRAPH_MAX_DEPTH = int(os.getenv("GRAPH_MAX_DEPTH", "3"))
+
+# Director agent
+DIRECTOR_MAX_STEPS = int(os.getenv("DIRECTOR_MAX_STEPS", "6"))
 
 # Media analysis
 MEDIA_DOWNLOAD_DIR = os.getenv("MEDIA_DOWNLOAD_DIR", str(DATA_DIR / "media"))
