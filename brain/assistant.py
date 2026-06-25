@@ -250,6 +250,20 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Graph tools no disponibles: %s", e)
 
+    # Specs (Spec Driven Development)
+    try:
+        from tools.spec_tool import (
+            CreateSpecTool, ListSpecsTool, GetSpecTool,
+            ExecuteSpecTool, DeleteSpecTool,
+        )
+        _tool_registry.register(CreateSpecTool())
+        _tool_registry.register(ListSpecsTool())
+        _tool_registry.register(GetSpecTool())
+        _tool_registry.register(ExecuteSpecTool(registry=_tool_registry))
+        _tool_registry.register(DeleteSpecTool())
+    except Exception as e:
+        logger.warning("Spec tools no disponibles: %s", e)
+
     # Director (multi-agent orchestration)
     try:
         from tools.director_tool import DirectorTool

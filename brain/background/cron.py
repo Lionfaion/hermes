@@ -123,6 +123,7 @@ class CronJob:
     last_result: str
     enabled: bool
     created_at: str
+    spec_id: str = ""
 
 
 def _init_cron_db():
@@ -140,6 +141,7 @@ def _init_cron_db():
                 last_run        DATETIME,
                 last_result     TEXT DEFAULT '',
                 enabled         INTEGER DEFAULT 1,
+                spec_id         TEXT DEFAULT '',
                 created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -179,16 +181,29 @@ class CronScheduler:
         task: str,
         schedule: str,
         context: str = "",
+        spec_id: str = "",
     ) -> str:
         cron_expr = parse_schedule(schedule)
         job_id = str(uuid.uuid4())[:8]
         next_run = _compute_next_run(cron_expr)
 
+        # If spec_id provided, inject spec as context
+        if spec_id:
+            try:
+                from specs.manager import SpecManager
+                manager = SpecManager()
+                spec = manager.get_spec(spec_id)
+                if spec:
+                    spec_context = manager.build_prompt_injection(spec)
+                    task = f"{task}\n\n{spec_context}"
+            except Exception:
+                pass
+
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
-                """INSERT INTO cron_jobs (job_id, name, agent, task, context, cron_expression, next_run)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (job_id, name, agent, task, context, cron_expr, next_run.isoformat()),
+                """INSERT INTO cron_jobs (job_id, name, agent, task, context, cron_expression, next_run, spec_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (job_id, name, agent, task, context, cron_expr, next_run.isoformat(), spec_id),
             )
 
         logger.info("Cron job '%s' creado: %s (%s)", name, job_id, cron_expr)
@@ -214,6 +229,7 @@ class CronScheduler:
                 last_result=r["last_result"] or "",
                 enabled=bool(r["enabled"]),
                 created_at=r["created_at"] or "",
+                spec_id=r["spec_id"] if "spec_id" in r.keys() else "",
             )
             for r in rows
         ]

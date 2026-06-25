@@ -36,6 +36,10 @@ class CreateCronJobTool(BaseTool):
                 "type": "string",
                 "description": "Contexto adicional para la tarea (opcional)",
             },
+            "spec_id": {
+                "type": "string",
+                "description": "ID de una spec para usar como brief en cada ejecución (opcional)",
+            },
         },
         "required": ["name", "agent", "task", "schedule"],
     }
@@ -47,11 +51,12 @@ class CreateCronJobTool(BaseTool):
         task: str,
         schedule: str,
         context: str = "",
+        spec_id: str = "",
     ) -> str:
         from background.cron import CronScheduler, parse_schedule
 
         scheduler = CronScheduler()
-        job_id = scheduler.add_job(name, agent, task, schedule, context)
+        job_id = scheduler.add_job(name, agent, task, schedule, context, spec_id=spec_id)
         cron_expr = parse_schedule(schedule)
 
         if not scheduler._running:
