@@ -10,6 +10,8 @@ from config import (
     OLLAMA_MODEL,
     OLLAMA_TIMEOUT,
     INFERENCE_RETRY_ATTEMPTS,
+    GOOGLE_AI_API_KEY,
+    GOOGLE_AI_CHAT_MODEL,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +87,41 @@ def chat_with_images(messages: list, images: list[str], model: str = OLLAMA_MODE
 
     data = _post_chat({"model": model, "messages": messages, "stream": False})
     return data["message"]["content"]
+
+
+def chat_google(messages: list, model: str = GOOGLE_AI_CHAT_MODEL) -> str:
+    """Chat via Google AI (Gemini) — fallback cuando Ollama está offline."""
+    if not GOOGLE_AI_API_KEY:
+        raise RuntimeError("GOOGLE_AI_API_KEY no configurada")
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        raise RuntimeError("google-genai no instalado: pip install google-genai")
+
+    client = genai.Client(api_key=GOOGLE_AI_API_KEY)
+
+    system_instruction = ""
+    gemini_contents = []
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "") or ""
+        if role == "system":
+            system_instruction = content
+        elif role == "user":
+            gemini_contents.append(types.Content(role="user", parts=[types.Part(text=content)]))
+        elif role in ("assistant", "model"):
+            gemini_contents.append(types.Content(role="model", parts=[types.Part(text=content)]))
+
+    config = types.GenerateContentConfig(
+        system_instruction=system_instruction if system_instruction else None,
+    )
+    response = client.models.generate_content(
+        model=model,
+        contents=gemini_contents,
+        config=config,
+    )
+    return response.text
 
 
 def chat_stream(messages: list, model: str = OLLAMA_MODEL) -> Generator:

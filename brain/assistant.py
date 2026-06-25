@@ -9,9 +9,10 @@ from config import (
     ASSISTANT_NAME, OLLAMA_MODEL, SYSTEM_PROMPT, RAG_ENABLED, LEARNING_ENABLED,
     VAULT_PATH, CHROMA_PATH, TOOL_CALLING_ENABLED, TOOL_MAX_ITERATIONS,
     AGENTS_ENABLED, WEB_ENABLED, WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_REGION,
+    GOOGLE_AI_API_KEY,
 )
 from memory import init_db, save_message, get_history, clear_session
-from inference_client import is_online, chat, chat_stream, chat_with_tools
+from inference_client import is_online, chat, chat_stream, chat_with_tools, chat_google
 from tools.registry import ToolRegistry
 
 _MEMORIES_NOTE = "Hermes/Memorias"  # path relativo dentro del vault (sin .md)
@@ -409,7 +410,9 @@ class HermesAssistant:
         return ""
 
     def _build_messages(self, user_input: str = "") -> list:
-        system_content = SYSTEM_PROMPT
+        from datetime import datetime
+        today = datetime.now().strftime("%A %d de %B de %Y, %H:%M")
+        system_content = f"Fecha y hora actual: {today}\n\n{SYSTEM_PROMPT}"
 
         # Memorias persistentes del vault (siempre incluidas)
         memories = self._load_memories()
@@ -485,9 +488,7 @@ class HermesAssistant:
 
         save_message(self.session_id, "user", user_input)
 
-        if not is_online():
-            logger.warning("GPU node offline")
-            return _OFFLINE_MSG
+        ollama_online = is_online()
 
         try:
             web_context = self._fetch_web_context(user_input)
@@ -499,10 +500,17 @@ class HermesAssistant:
             else:
                 messages.append({"role": "user", "content": user_input})
 
-            if TOOL_CALLING_ENABLED:
-                response = self._tool_call_loop(messages)
+            if ollama_online:
+                if TOOL_CALLING_ENABLED:
+                    response = self._tool_call_loop(messages)
+                else:
+                    response = chat(messages, self.model)
+            elif GOOGLE_AI_API_KEY:
+                logger.info("GPU node offline — usando Google AI como fallback")
+                response = chat_google(messages)
             else:
-                response = chat(messages, self.model)
+                logger.warning("GPU node offline y sin fallback de Google AI")
+                return _OFFLINE_MSG
 
             save_message(self.session_id, "assistant", response)
             if ilog:
@@ -510,6 +518,13 @@ class HermesAssistant:
             return response
         except Exception as e:
             logger.error("respond() falló: %s", e)
+            if not ollama_online and GOOGLE_AI_API_KEY:
+                try:
+                    messages_fallback = self._build_messages(user_input)
+                    messages_fallback.append({"role": "user", "content": user_input})
+                    return chat_google(messages_fallback)
+                except Exception as e2:
+                    logger.error("Google AI fallback también falló: %s", e2)
             return f"[Error]: {e}"
 
     def _tool_call_loop(self, messages: list) -> str:

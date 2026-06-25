@@ -80,14 +80,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_allowed(update.effective_user.id):
         await update.message.reply_text("Unauthorized.")
         return
+    from config import GOOGLE_AI_API_KEY
+    fallback_line = "Respondo con Google AI cuando el GPU está offline." if GOOGLE_AI_API_KEY else ""
     await update.message.reply_text(
         f"Hola, soy {ASSISTANT_NAME}, tu asistente de IA personal.\n\n"
         "Podés escribirme o mandarme audios de voz.\n\n"
+        + (f"{fallback_line}\n\n" if fallback_line else "") +
         "Comandos:\n"
         "/viral [URL] [tema] — Replicar un video viral con nuevo tema\n"
         "/remember [texto] — Guardar algo en Obsidian\n"
         "/voice  — Activar/desactivar respuestas por audio\n"
         "/status — Estado del servidor de IA\n"
+        "/tools  — Ver herramientas cargadas\n"
         "/clear  — Borrar memoria de conversación\n"
         "/new    — Nueva sesión\n"
         "/help   — Mostrar esta ayuda"
@@ -97,8 +101,33 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_allowed(update.effective_user.id):
         return
-    status = "ONLINE" if is_online() else "OFFLINE"
-    await update.message.reply_text(f"GPU node: {status}")
+    from config import GOOGLE_AI_API_KEY, OLLAMA_MODEL
+    from inference_client import list_models
+    gpu_status = "ONLINE" if is_online() else "OFFLINE"
+    gemini_status = "configurado" if GOOGLE_AI_API_KEY else "sin API key"
+    models = list_models() if is_online() else []
+    model_info = f"Modelo activo: {OLLAMA_MODEL}"
+    if models:
+        model_info += f"\nModelos disponibles: {', '.join(models[:5])}"
+    await update.message.reply_text(
+        f"GPU node (Ollama): {gpu_status}\n"
+        f"Google AI fallback: {gemini_status}\n"
+        f"{model_info}"
+    )
+
+
+async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update.effective_user.id):
+        return
+    session = _get_session(update.effective_user.id)
+    tools = session.registry.list_tools()
+    if not tools:
+        await update.message.reply_text("No hay herramientas cargadas.")
+        return
+    tools_text = "\n".join(f"• {t}" for t in sorted(tools))
+    msg = f"Herramientas cargadas ({len(tools)}):\n{tools_text}"
+    for i in range(0, len(msg), 4000):
+        await update.message.reply_text(msg[i:i+4000])
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -378,6 +407,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start",    cmd_start))
     app.add_handler(CommandHandler("help",     cmd_start))
     app.add_handler(CommandHandler("status",   cmd_status))
+    app.add_handler(CommandHandler("tools",    cmd_tools))
     app.add_handler(CommandHandler("clear",    cmd_clear))
     app.add_handler(CommandHandler("new",      cmd_new))
     app.add_handler(CommandHandler("remember", cmd_remember))

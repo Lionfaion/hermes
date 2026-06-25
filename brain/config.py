@@ -176,10 +176,11 @@ ALLOWED_COMMANDS = [
 TTS_BACKEND = os.getenv("TTS_BACKEND", "edge")  # "edge" (gratis) o "voxtral" (premium)
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 
-# Google AI (Imagen / Veo)
+# Google AI (Imagen / Veo / Gemini chat)
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
 GOOGLE_AI_IMAGE_MODEL = os.getenv("GOOGLE_AI_IMAGE_MODEL", "imagen-3.0-generate-002")
 GOOGLE_AI_VIDEO_MODEL = os.getenv("GOOGLE_AI_VIDEO_MODEL", "veo-2.0-generate-001")
+GOOGLE_AI_CHAT_MODEL = os.getenv("GOOGLE_AI_CHAT_MODEL", "gemini-2.0-flash")
 
 # Google Stitch (AI UI design)
 STITCH_API_KEY = os.getenv("STITCH_API_KEY", "")
