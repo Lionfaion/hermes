@@ -116,6 +116,36 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+def _upload_log_to_gist(content: str) -> str:
+    """Sube el contenido del log a un GitHub Gist y devuelve la URL."""
+    import requests
+    from config import GITHUB_TOKEN
+    if not GITHUB_TOKEN:
+        return ""
+    log_dir = Path(__file__).resolve().parent.parent.parent / "logs"
+    gist_id_file = log_dir / "gist_id.txt"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+    }
+    payload = {
+        "description": "Hermes bot — live logs",
+        "public": False,
+        "files": {"hermes.log": {"content": content or "(vacío)"}},
+    }
+    if gist_id_file.exists():
+        gist_id = gist_id_file.read_text().strip()
+        r = requests.patch(f"https://api.github.com/gists/{gist_id}", json=payload, headers=headers, timeout=10)
+        if r.ok:
+            return r.json().get("html_url", "")
+    r = requests.post("https://api.github.com/gists", json=payload, headers=headers, timeout=10)
+    if r.ok:
+        data = r.json()
+        gist_id_file.write_text(data["id"])
+        return data.get("html_url", "")
+    return ""
+
+
 async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_allowed(update.effective_user.id):
         return
@@ -125,10 +155,15 @@ async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     try:
         lines = log_file.read_text(encoding="utf-8", errors="ignore").splitlines()
-        last = "\n".join(lines[-60:]) if len(lines) > 60 else "\n".join(lines)
-        msg = f"Últimas líneas del log ({log_file.name}):\n\n{last}"
-        for i in range(0, len(msg), 4000):
-            await update.message.reply_text(msg[i:i+4000])
+        last_lines = "\n".join(lines[-80:]) if len(lines) > 80 else "\n".join(lines)
+        loop = asyncio.get_event_loop()
+        gist_url = await loop.run_in_executor(None, _upload_log_to_gist, last_lines)
+        if gist_url:
+            await update.message.reply_text(f"Log subido a Gist (privado):\n{gist_url}")
+        else:
+            msg = f"Últimas líneas del log:\n\n{last_lines}"
+            for i in range(0, len(msg), 4000):
+                await update.message.reply_text(msg[i:i+4000])
     except Exception as e:
         await update.message.reply_text(f"Error leyendo log: {e}")
 
