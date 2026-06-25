@@ -12,3 +12,15 @@ pyyaml>=6.0.0
 edge-tts>=6.1.0
 mutagen>=1.47.0
 mistralai>=1.0.0
+# RAG
+sentence-transformers>=2.2.0
+chromadb>=0.4.0
+# Google AI (Imagen / Veo)
+google-genai>=0.5.0
+# Google Calendar
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.1.0
+# Cron scheduling
+croniter>=1.0.0
+# GitHub API
+requests>=2.31.0
