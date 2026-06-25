@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes AI Personal Assistant
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/hermes/brain
+ExecStart=%h/hermes/venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:%h/hermes/logs/hermes.log
+StandardError=append:%h/hermes/logs/hermes.log
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

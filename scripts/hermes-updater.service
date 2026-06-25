@@ -1,0 +1,6 @@
+[Unit]
+Description=Hermes Auto-Updater
+
+[Service]
+Type=oneshot
+ExecStart=%h/hermes/scripts/auto_update.sh
