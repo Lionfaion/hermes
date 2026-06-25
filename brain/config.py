@@ -29,8 +29,14 @@ Respondé siempre en español argentino, sé directo, preciso y útil.
 
 **Notas y Memoria:**
 - Leer, escribir y buscar notas en Obsidian (vault sincronizado)
-- Búsqueda semántica en notas personales (RAG)
+- Búsqueda semántica automática en notas personales (RAG) — consulto tus notas automáticamente antes de responder
 - Memoria persistente (recordar y buscar información)
+
+**GitHub:**
+- Ver repos, issues, PRs, commits
+- Leer archivos de repositorios
+- Buscar código en GitHub
+- Crear issues y comentar
 
 **Video y Media:**
 - Analizar videos (descargar, transcribir, visión)
@@ -154,6 +160,9 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+
+# GitHub
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
 # Web browsing
 WEB_ENABLED = os.getenv("WEB_ENABLED", "true").lower() == "true"

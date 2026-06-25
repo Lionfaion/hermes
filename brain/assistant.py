@@ -21,6 +21,7 @@ _OFFLINE_MSG = (
 _skills_manager = None
 _interaction_logger = None
 _tool_registry = None
+_vault_searcher = None
 
 
 def _get_skills():
@@ -43,6 +44,20 @@ def _get_ilog():
         except Exception as e:
             logger.warning("InteractionLogger no disponible: %s", e)
     return _interaction_logger
+
+
+def _get_vault_searcher():
+    """Obtiene el buscador de vault para RAG automático."""
+    global _vault_searcher
+    if _vault_searcher is None and RAG_ENABLED:
+        try:
+            from rag.indexer import VaultIndexer
+            from rag.searcher import VaultSearcher
+            indexer = VaultIndexer(VAULT_PATH, CHROMA_PATH)
+            _vault_searcher = VaultSearcher(indexer)
+        except Exception as e:
+            logger.warning("VaultSearcher no disponible: %s", e)
+    return _vault_searcher
 
 
 def _get_registry() -> ToolRegistry:
@@ -190,6 +205,12 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Expansion tools no disponibles: %s", e)
 
+    try:
+        from tools.github_tool import GitHubTool
+        _tool_registry.register(GitHubTool())
+    except Exception as e:
+        logger.warning("GitHub tool no disponible: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
@@ -219,6 +240,12 @@ class HermesAssistant:
             if injection:
                 system_content += f"\n\n[Comportamiento aprendido de experiencia]\n{injection}"
 
+        # RAG automático: buscar en Obsidian vault antes de responder
+        if user_input and RAG_ENABLED:
+            vault_context = self._get_vault_context(user_input)
+            if vault_context:
+                system_content += f"\n\n{vault_context}"
+
         if TOOL_CALLING_ENABLED:
             tool_names = self.registry.list_tools()
             if tool_names:
@@ -231,6 +258,20 @@ class HermesAssistant:
         messages = [{"role": "system", "content": system_content}]
         messages += get_history(self.session_id)
         return messages
+
+    def _get_vault_context(self, query: str) -> str:
+        """Busca contexto relevante en el vault de Obsidian automáticamente."""
+        searcher = _get_vault_searcher()
+        if not searcher:
+            return ""
+        try:
+            context = searcher.build_context(query)
+            if context:
+                logger.debug("RAG automático inyectó contexto para: %s", query[:50])
+            return context
+        except Exception as e:
+            logger.warning("RAG automático falló: %s", e)
+            return ""
 
     def respond(self, user_input: str) -> str:
         if not user_input.strip():

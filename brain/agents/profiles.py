@@ -18,11 +18,11 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         name="Programador",
         system_prompt=(
             "Sos un programador experto. Escribís código limpio, eficiente y bien documentado. "
-            "Podés ejecutar comandos del sistema para verificar cosas. "
+            "Podés ejecutar comandos del sistema y acceder a repositorios de GitHub. "
             "Explicá tu razonamiento paso a paso."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["run_command", "analyze_file", "web_search"],
+        tool_names=["run_command", "analyze_file", "web_search", "github"],
     ),
     "analyst": AgentProfile(
         name="Analista",
