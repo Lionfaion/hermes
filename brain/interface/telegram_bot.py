@@ -89,9 +89,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Comandos:\n"
         "/viral [URL] [tema] — Replicar un video viral con nuevo tema\n"
         "/remember [texto] — Guardar algo en Obsidian\n"
+        "/improve — Auto-mejorar comportamiento analizando conversaciones\n"
         "/voice  — Activar/desactivar respuestas por audio\n"
         "/status — Estado del servidor de IA\n"
         "/tools  — Ver herramientas cargadas\n"
+        "/logs   — Ver logs recientes\n"
         "/clear  — Borrar memoria de conversación\n"
         "/new    — Nueva sesión\n"
         "/help   — Mostrar esta ayuda"
@@ -166,6 +168,31 @@ async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await update.message.reply_text(msg[i:i+4000])
     except Exception as e:
         await update.message.reply_text(f"Error leyendo log: {e}")
+
+
+async def cmd_improve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_allowed(update.effective_user.id):
+        return
+    msg = await update.message.reply_text(
+        "Analizando conversaciones recientes y generando mejoras de comportamiento... un momento."
+    )
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(None, _run_improvement)
+        text = f"Auto-mejora completada y guardada en vault:\n\n{result}"
+        for i in range(0, len(text), 4000):
+            if i == 0:
+                await msg.edit_text(text[i:i+4000])
+            else:
+                await update.message.reply_text(text[i:i+4000])
+    except Exception as e:
+        logger.error("cmd_improve error: %s", e)
+        await msg.edit_text(f"Error en auto-mejora: {e}")
+
+
+def _run_improvement() -> str:
+    from self_improvement import run_self_improvement
+    return run_self_improvement()
 
 
 async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -461,6 +488,7 @@ def main() -> None:
     app.add_handler(CommandHandler("status",   cmd_status))
     app.add_handler(CommandHandler("tools",    cmd_tools))
     app.add_handler(CommandHandler("logs",     cmd_logs))
+    app.add_handler(CommandHandler("improve",  cmd_improve))
     app.add_handler(CommandHandler("clear",    cmd_clear))
     app.add_handler(CommandHandler("new",      cmd_new))
     app.add_handler(CommandHandler("remember", cmd_remember))

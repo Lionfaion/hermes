@@ -341,17 +341,27 @@ class HermesAssistant:
         logger.info("Sesión iniciada: %s", self.session_id)
 
     def _load_memories(self) -> str:
-        """Lee la nota de memorias del vault de Obsidian e inyecta en el system prompt."""
+        """Lee la nota de memorias del vault e inyecta en el system prompt."""
+        parts = []
         try:
             vault = Path(VAULT_PATH)
             note = (vault / _MEMORIES_NOTE).with_suffix(".md")
             if note.exists():
                 content = note.read_text(encoding="utf-8", errors="ignore").strip()
                 if content:
-                    return f"[Lo que sé del usuario — información persistente]\n{content}"
+                    parts.append(f"[Lo que sé del usuario — información persistente]\n{content}")
         except Exception as e:
             logger.debug("_load_memories error: %s", e)
-        return ""
+
+        try:
+            from self_improvement import load_improvements
+            improvements = load_improvements()
+            if improvements:
+                parts.append(f"[Comportamiento aprendido de auto-mejora]\n{improvements}")
+        except Exception as e:
+            logger.debug("_load_improvements error: %s", e)
+
+        return "\n\n".join(parts)
 
     def _search_vault(self, query: str) -> str:
         """Búsqueda semántica en el vault para contexto relevante al mensaje."""
