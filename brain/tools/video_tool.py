@@ -46,8 +46,8 @@ class ReplicateViralTool(BaseTool):
             },
             "visual_mode": {
                 "type": "string",
-                "description": "Fuente de visuales: 'stock' (Pexels/Pixabay), 'google_images' (Google Imagen), 'google_video' (Google Veo)",
-                "enum": ["stock", "google_images", "google_video"],
+                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video', 'broll', 'heygen'",
+                "enum": ["stock", "google_images", "google_video", "broll", "heygen"],
             },
         },
         "required": ["source_url", "new_topic"],
@@ -75,28 +75,34 @@ class ReplicateViralTool(BaseTool):
             use_stock_footage=visual_mode == "stock",
             use_google_ai_images=visual_mode == "google_images",
             use_google_ai_video=visual_mode == "google_video",
+            use_broll_replicate=visual_mode == "broll",
+            use_heygen_avatar=visual_mode == "heygen",
         )
         result = replicate_viral(source_url, new_topic, config)
 
         if result.awaiting_approval:
             return (
-                f"📝 **Guión generado para aprobación:**\n\n"
+                f"**Guión generado para aprobación:**\n\n"
                 f"{result.script}\n\n"
                 f"---\n"
+                f"Job ID: {result.job_id}\n"
                 f"Pasos completados: {', '.join(result.steps_completed)}\n\n"
                 f"¿Te gusta este guión? Si querés que lo produzca, decime 'dale, producilo' "
                 f"o 'aprobado'. Si querés cambios, decime qué modificar."
             )
 
         if result.success:
-            return (
+            msg = (
                 f"Video generado exitosamente!\n"
                 f"Ruta: {result.video_path}\n"
                 f"Duración: {result.duration:.1f}s\n"
-                f"Pasos completados: {', '.join(result.steps_completed)}\n\n"
-                f"Guión usado:\n{result.script}"
+                f"Job ID: {result.job_id}\n"
+                f"Pasos: {', '.join(result.steps_completed)}"
             )
-        return f"Error en el pipeline: {result.error}\nPasos completados: {', '.join(result.steps_completed)}"
+            if result.qc_report:
+                msg += f"\n\n{result.qc_report}"
+            return msg
+        return f"Error en el pipeline: {result.error}\nPasos: {', '.join(result.steps_completed)}"
 
 
 class ProduceVideoTool(BaseTool):
@@ -133,12 +139,20 @@ class ProduceVideoTool(BaseTool):
             },
             "visual_mode": {
                 "type": "string",
-                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video'",
-                "enum": ["stock", "google_images", "google_video"],
+                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video', 'broll', 'heygen'",
+                "enum": ["stock", "google_images", "google_video", "broll", "heygen"],
             },
             "stock_query": {
                 "type": "string",
                 "description": "Búsqueda para stock footage (en inglés)",
+            },
+            "burn_captions": {
+                "type": "boolean",
+                "description": "Si es true, quema subtítulos karaoke (ASS) en el video",
+            },
+            "job_id": {
+                "type": "string",
+                "description": "ID del job previo (para retomar pipeline)",
             },
         },
         "required": ["script", "topic"],
@@ -153,6 +167,8 @@ class ProduceVideoTool(BaseTool):
         tts_backend: str = "",
         visual_mode: str = "stock",
         stock_query: str = "",
+        burn_captions: bool = False,
+        job_id: str = "",
     ) -> str:
         from video.pipeline import produce_approved_video, PipelineConfig
 
@@ -164,17 +180,24 @@ class ProduceVideoTool(BaseTool):
             use_stock_footage=visual_mode == "stock",
             use_google_ai_images=visual_mode == "google_images",
             use_google_ai_video=visual_mode == "google_video",
+            use_broll_replicate=visual_mode == "broll",
+            use_heygen_avatar=visual_mode == "heygen",
             stock_query_override=stock_query,
+            burn_captions=burn_captions,
         )
-        result = produce_approved_video(script, topic, config)
+        result = produce_approved_video(script, topic, config, job_id=job_id)
 
         if result.success:
-            return (
+            msg = (
                 f"Video producido exitosamente!\n"
                 f"Ruta: {result.video_path}\n"
                 f"Duración: {result.duration:.1f}s\n"
+                f"Job ID: {result.job_id}\n"
                 f"Pasos: {', '.join(result.steps_completed)}"
             )
+            if result.qc_report:
+                msg += f"\n\n{result.qc_report}"
+            return msg
         return f"Error produciendo video: {result.error}\nPasos: {', '.join(result.steps_completed)}"
 
 
@@ -182,7 +205,7 @@ class GenerateVideoTool(BaseTool):
     name = "generate_video"
     description = (
         "Genera un video desde cero a partir de un guión. Crea la voz con TTS, "
-        "busca stock footage o genera imágenes con Google AI, y ensambla el video final. "
+        "busca stock footage o genera imágenes/b-roll con IA, y ensambla el video final. "
         "Úsala cuando el usuario ya tenga un guión o quiera crear un video desde texto."
     )
     parameters = {
@@ -220,8 +243,12 @@ class GenerateVideoTool(BaseTool):
             },
             "visual_mode": {
                 "type": "string",
-                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video'",
-                "enum": ["stock", "google_images", "google_video"],
+                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video', 'broll', 'heygen'",
+                "enum": ["stock", "google_images", "google_video", "broll", "heygen"],
+            },
+            "burn_captions": {
+                "type": "boolean",
+                "description": "Si es true, quema subtítulos karaoke (ASS) en el video",
             },
         },
         "required": ["script", "title"],
@@ -237,6 +264,7 @@ class GenerateVideoTool(BaseTool):
         tts_backend: str = "",
         voice_reference_path: str = "",
         visual_mode: str = "stock",
+        burn_captions: bool = False,
     ) -> str:
         from video.pipeline import produce_approved_video, PipelineConfig
 
@@ -248,17 +276,24 @@ class GenerateVideoTool(BaseTool):
             use_stock_footage=visual_mode == "stock",
             use_google_ai_images=visual_mode == "google_images",
             use_google_ai_video=visual_mode == "google_video",
+            use_broll_replicate=visual_mode == "broll",
+            use_heygen_avatar=visual_mode == "heygen",
             stock_query_override=stock_query,
             clone_original_voice=bool(voice_reference_path),
+            burn_captions=burn_captions,
         )
         result = produce_approved_video(script, title, config)
 
         if result.success:
-            return (
+            msg = (
                 f"Video generado: {result.video_path}\n"
                 f"Duración: {result.duration:.1f}s\n"
+                f"Job ID: {result.job_id}\n"
                 f"Pasos: {', '.join(result.steps_completed)}"
             )
+            if result.qc_report:
+                msg += f"\n\n{result.qc_report}"
+            return msg
         return f"Error: {result.error}\nPasos: {', '.join(result.steps_completed)}"
 
 
@@ -298,6 +333,189 @@ class GenerateImageTool(BaseTool):
             paths = "\n".join(f"- {r.image_path}" for r in successful)
             return f"Imágenes generadas ({len(successful)}):\n{paths}"
         return f"Error generando imágenes: {results[0].error if results else 'desconocido'}"
+
+
+class GenerateBrollTool(BaseTool):
+    name = "generate_broll"
+    description = (
+        "Genera clips de b-roll (video de fondo) con IA usando Replicate Seedance 2.0. "
+        "Si Replicate no está disponible, usa generación local con animaciones procedurales. "
+        "Úsala cuando necesites clips cortos de video para fondos, transiciones o complementar narración."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "prompt": {
+                "type": "string",
+                "description": "Descripción del clip a generar (en inglés es mejor)",
+            },
+            "duration": {
+                "type": "integer",
+                "description": "Duración del clip en segundos (default 5)",
+            },
+            "aspect_ratio": {
+                "type": "string",
+                "description": "Relación de aspecto",
+                "enum": ["9:16", "16:9", "1:1"],
+            },
+        },
+        "required": ["prompt"],
+    }
+
+    def execute(self, prompt: str, duration: int = 5, aspect_ratio: str = "9:16") -> str:
+        from video.broll import generate_broll_replicate, generate_broll_local, REPLICATE_API_TOKEN
+
+        if REPLICATE_API_TOKEN:
+            result = generate_broll_replicate(prompt, duration=duration, aspect_ratio=aspect_ratio)
+        else:
+            result = generate_broll_local(prompt)
+
+        if result.success:
+            return (
+                f"B-roll generado!\n"
+                f"Ruta: {result.video_path}\n"
+                f"Duración: {result.duration:.1f}s\n"
+                f"Fuente: {result.source}"
+            )
+        return f"Error generando b-roll: {result.error}"
+
+
+class HeyGenAvatarTool(BaseTool):
+    name = "heygen_avatar"
+    description = (
+        "Genera un video con avatar sintético usando HeyGen. "
+        "El avatar habla el texto que le pases con labios sincronizados. "
+        "Requiere HEYGEN_API_KEY. Úsala para crear videos con presentador virtual."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "script": {
+                "type": "string",
+                "description": "Texto que el avatar va a decir",
+            },
+            "avatar_id": {
+                "type": "string",
+                "description": "ID del avatar HeyGen (vacío para usar el default)",
+            },
+            "voice_id": {
+                "type": "string",
+                "description": "ID de la voz HeyGen (vacío para usar el default)",
+            },
+            "aspect_ratio": {
+                "type": "string",
+                "description": "Relación de aspecto del video",
+                "enum": ["9:16", "16:9", "1:1"],
+            },
+        },
+        "required": ["script"],
+    }
+
+    def execute(
+        self, script: str, avatar_id: str = "", voice_id: str = "", aspect_ratio: str = "9:16"
+    ) -> str:
+        from video.heygen import generate_avatar_video
+        result = generate_avatar_video(script, avatar_id=avatar_id, voice_id=voice_id, aspect_ratio=aspect_ratio)
+
+        if result.success:
+            return (
+                f"Video con avatar generado!\n"
+                f"Ruta: {result.video_path}\n"
+                f"Duración: {result.duration:.1f}s"
+            )
+        return f"Error con HeyGen: {result.error}"
+
+
+class AddCaptionsTool(BaseTool):
+    name = "add_captions"
+    description = (
+        "Agrega subtítulos quemados a un video existente. Transcribe el audio con Whisper, "
+        "genera subtítulos ASS con estilo karaoke, y los quema en el video. "
+        "Úsala para agregar captions a cualquier video."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "video_path": {
+                "type": "string",
+                "description": "Ruta al video al que agregar subtítulos",
+            },
+            "style": {
+                "type": "string",
+                "description": "Estilo de subtítulos: 'karaoke' (grande, bold) o 'standard' (normal)",
+                "enum": ["karaoke", "standard"],
+            },
+        },
+        "required": ["video_path"],
+    }
+
+    def execute(self, video_path: str, style: str = "karaoke") -> str:
+        from video.captioner import add_captions_to_video
+        result = add_captions_to_video(video_path, style=style)
+
+        if result.success:
+            return (
+                f"Subtítulos agregados!\n"
+                f"Video: {result.output_path}\n"
+                f"Segmentos detectados: {len(result.segments)}"
+            )
+        return f"Error agregando subtítulos: {result.error}"
+
+
+class VideoQCTool(BaseTool):
+    name = "video_qc"
+    description = (
+        "Valida la calidad técnica de un video: resolución, codec, duración, frames negros, "
+        "y compatibilidad con plataformas (TikTok, Reels, Shorts, YouTube). "
+        "Úsala antes de publicar para asegurarte que el video cumple los requisitos."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "video_path": {
+                "type": "string",
+                "description": "Ruta al video a validar",
+            },
+        },
+        "required": ["video_path"],
+    }
+
+    def execute(self, video_path: str) -> str:
+        from video.qc import probe_video, format_qc_report
+        result = probe_video(video_path)
+        return format_qc_report(result)
+
+
+class ListVideoJobsTool(BaseTool):
+    name = "list_video_jobs"
+    description = (
+        "Lista los trabajos de video recientes con su estado y progreso. "
+        "Úsala para ver qué videos se generaron, cuáles están en progreso o fallaron."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Cantidad máxima de jobs a mostrar",
+            },
+        },
+    }
+
+    def execute(self, limit: int = 10) -> str:
+        from video.job_manager import list_jobs
+        jobs = list_jobs(limit=limit)
+        if not jobs:
+            return "No hay video jobs registrados."
+
+        lines = [f"**Video Jobs ({len(jobs)}):**\n"]
+        for job in jobs:
+            status_icon = {"completed": "OK", "failed": "FAIL", "paused": "PAUSA", "in_progress": "..."}.get(job.status, "?")
+            lines.append(
+                f"- [{status_icon}] {job.job_id}: {job.topic[:40]} "
+                f"(stage: {job.stage}, pasos: {len(job.steps_completed)})"
+            )
+        return "\n".join(lines)
 
 
 class CloneVoiceTool(BaseTool):

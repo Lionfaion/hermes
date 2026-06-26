@@ -42,7 +42,10 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "con Google AI. Describí lo que encontrás de forma detallada y organizada."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["analyze_media", "web_fetch", "web_search", "generate_image", "produce_video"],
+        tool_names=[
+            "analyze_media", "web_fetch", "web_search", "generate_image", "produce_video",
+            "generate_broll", "heygen_avatar", "add_captions", "video_qc", "list_video_jobs",
+        ],
     ),
     "designer": AgentProfile(
         name="Diseñador",
@@ -98,6 +101,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         tool_names=[
             "generate_content", "detect_trends", "clip_content", "manage_niche",
             "batch_generate", "video_analytics", "web_search", "produce_video", "generate_image",
+            "generate_broll", "heygen_avatar", "add_captions", "video_qc", "replicate_viral",
         ],
     ),
     "sales": AgentProfile(

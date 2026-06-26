@@ -138,6 +138,8 @@ def _get_registry() -> ToolRegistry:
         from tools.video_tool import (
             ReplicateViralTool, GenerateVideoTool, AnalyzeViralTool,
             CloneVoiceTool, ProduceVideoTool, GenerateImageTool,
+            GenerateBrollTool, HeyGenAvatarTool, AddCaptionsTool,
+            VideoQCTool, ListVideoJobsTool,
         )
         _tool_registry.register(ReplicateViralTool())
         _tool_registry.register(GenerateVideoTool())
@@ -145,6 +147,11 @@ def _get_registry() -> ToolRegistry:
         _tool_registry.register(CloneVoiceTool())
         _tool_registry.register(ProduceVideoTool())
         _tool_registry.register(GenerateImageTool())
+        _tool_registry.register(GenerateBrollTool())
+        _tool_registry.register(HeyGenAvatarTool())
+        _tool_registry.register(AddCaptionsTool())
+        _tool_registry.register(VideoQCTool())
+        _tool_registry.register(ListVideoJobsTool())
     except Exception as e:
         logger.warning("Video tools no disponibles: %s", e)
 

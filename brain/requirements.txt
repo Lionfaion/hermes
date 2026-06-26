@@ -24,3 +24,9 @@ google-auth-oauthlib>=1.1.0
 croniter>=1.0.0
 # GitHub API
 requests>=2.31.0
+# Video: Replicate (Seedance b-roll)
+replicate>=0.25.0
+# Video: image generation
+Pillow>=10.0.0
+# Video: Whisper (captions)
+openai-whisper>=20231117

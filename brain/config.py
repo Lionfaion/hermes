@@ -44,6 +44,11 @@ Respondé siempre en español argentino, sé directo, preciso y útil.
 - El guión se muestra para aprobación antes de producir el video
 - Generar imágenes con Google AI (Imagen)
 - Generar videos con Google AI (Veo)
+- Generar b-roll con IA (Replicate Seedance 2.0) o animación local
+- Generar videos con avatar sintético (HeyGen)
+- Agregar subtítulos karaoke quemados a cualquier video (Whisper + ASS)
+- Validar calidad técnica de videos (QC: codec, resolución, compatibilidad por plataforma)
+- Tracking de trabajos de video (jobs con estado y artefactos)
 - Clipear momentos virales de videos largos
 - Generar voz con Edge-TTS (gratis) o Voxtral (premium)
 - Clonar voces
@@ -180,6 +185,14 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
 GOOGLE_AI_IMAGE_MODEL = os.getenv("GOOGLE_AI_IMAGE_MODEL", "imagen-3.0-generate-002")
 GOOGLE_AI_VIDEO_MODEL = os.getenv("GOOGLE_AI_VIDEO_MODEL", "veo-2.0-generate-001")
+
+# HeyGen (avatar videos)
+HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY", "")
+HEYGEN_AVATAR_ID = os.getenv("HEYGEN_AVATAR_ID", "")
+HEYGEN_VOICE_ID = os.getenv("HEYGEN_VOICE_ID", "")
+
+# Replicate (Seedance b-roll)
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
 
 # Google Stitch (AI UI design)
 STITCH_API_KEY = os.getenv("STITCH_API_KEY", "")
