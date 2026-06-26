@@ -32,7 +32,8 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "con datos que las respalden."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["analyze_file", "search_notes", "vault_read", "vault_list", "web_search"],
+        tool_names=["analyze_file", "search_notes", "vault_read", "vault_list", "web_search",
+                     "autoreason", "parallel_solve"],
     ),
     "media_specialist": AgentProfile(
         name="Especialista en Media",
@@ -45,6 +46,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         tool_names=[
             "analyze_media", "web_fetch", "web_search", "generate_image", "produce_video",
             "generate_broll", "heygen_avatar", "add_captions", "video_qc", "list_video_jobs",
+            "kanban_video",
         ],
     ),
     "designer": AgentProfile(
@@ -102,6 +104,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "generate_content", "detect_trends", "clip_content", "manage_niche",
             "batch_generate", "video_analytics", "web_search", "produce_video", "generate_image",
             "generate_broll", "heygen_avatar", "add_captions", "video_qc", "replicate_viral",
+            "kanban_video", "write_novel",
         ],
     ),
     "sales": AgentProfile(
@@ -149,6 +152,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "de ejecución y las dependencias, y sintetizás los resultados en una respuesta final."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["delegate_to_agent", "web_search", "search_notes"],
+        tool_names=["delegate_to_agent", "web_search", "search_notes",
+                     "autoreason", "parallel_solve", "evolve_prompt", "agent_stats"],
     ),
 }

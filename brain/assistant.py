@@ -278,6 +278,25 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Director tool no disponible: %s", e)
 
+    # Reasoning, evolution, steering, and advanced AI tools
+    try:
+        from tools.reasoning_tool import (
+            AutoReasonTool, ParallelSolveTool, ReasoningPracticeTool,
+            EvolvePromptTool, NeuralSteerTool, AbliterateTool,
+            KanbanVideoTool, NovelWriterTool, AgentStatsTool,
+        )
+        _tool_registry.register(AutoReasonTool())
+        _tool_registry.register(ParallelSolveTool())
+        _tool_registry.register(ReasoningPracticeTool())
+        _tool_registry.register(EvolvePromptTool())
+        _tool_registry.register(NeuralSteerTool())
+        _tool_registry.register(AbliterateTool())
+        _tool_registry.register(KanbanVideoTool())
+        _tool_registry.register(NovelWriterTool())
+        _tool_registry.register(AgentStatsTool())
+    except Exception as e:
+        logger.warning("Reasoning/AI tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
@@ -423,6 +442,18 @@ class HermesAssistant:
                         args = json.loads(args)
                     except json.JSONDecodeError:
                         args = {}
+
+                # Governance: check policy before executing
+                try:
+                    from governance.policy_engine import check_permission
+                    decision = check_permission(name, agent_name=getattr(self, '_current_agent', ''), args=args)
+                    if not decision.allowed:
+                        result = f"[BLOQUEADO] Herramienta '{name}' denegada por política: {decision.rule_name}"
+                        logger.warning("Governance DENY: %s -> %s", name, decision.rule_name)
+                        messages.append({"role": "tool", "content": result})
+                        continue
+                except Exception:
+                    pass
 
                 result = self.registry.execute(name, args)
                 messages.append({"role": "tool", "content": result})

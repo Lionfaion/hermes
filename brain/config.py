@@ -83,6 +83,26 @@ Respondé siempre en español argentino, sé directo, preciso y útil.
 - Análisis estratégico con frameworks (Pareto, FODA, Blue Ocean, Eisenhower, Customer Journey)
 - Planificación y priorización
 
+**Razonamiento Avanzado:**
+- Autoreason: genera 3 respuestas competidoras y selecciona la mejor via juicio ciego
+- Resolución paralela: resuelve problemas con múltiples estrategias simultáneas
+- Práctica de razonamiento: ejercicios auto-generados y evaluados
+- Neural steering: ajusta creatividad, precisión, tono en las respuestas
+- Abliteración: manejo automático de rechazos del modelo
+
+**Auto-mejora:**
+- Evolución de prompts: mejora automática de system prompts usando trazas de ejecución
+- RL ambiental: tracking de episodios y rewards para optimizar agentes
+- Gobernanza: políticas YAML para control determinístico de herramientas
+
+**Contenido Largo:**
+- Escritura de novelas/contenido extenso con múltiples capítulos coherentes
+- Pipeline: worldbuilding → outline → expansión → revisión de continuidad
+
+**Video Multi-agente (Kanban):**
+- Pipeline autónomo: Director → Cinematógrafo → Renderers → Editor
+- Usa Pollinations (gratis) con fallback local
+
 **Diseño:**
 - Crear landing pages y UI con Google Stitch o HTML directo
 
@@ -167,8 +187,11 @@ MEDIA_DOWNLOAD_DIR = os.getenv("MEDIA_DOWNLOAD_DIR", str(DATA_DIR / "media"))
 MEDIA_MAX_DURATION = int(os.getenv("MEDIA_MAX_DURATION", "600"))
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
-VISION_MODEL = os.getenv("VISION_MODEL", "llava")
+VISION_MODEL = os.getenv("VISION_MODEL", "llava")  # "llava" or "obsidian:3b" (NousResearch Obsidian 3B)
 VISION_FRAMES = int(os.getenv("VISION_FRAMES", "4"))
+
+# Obsidian 3B vision model (NousResearch — better quality, needs `ollama pull obsidian:3b`)
+OBSIDIAN_VISION_MODEL = os.getenv("OBSIDIAN_VISION_MODEL", "obsidian:3b")
 
 # System commands (allowlist)
 ALLOWED_COMMANDS = [
@@ -198,6 +221,12 @@ REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
 # SadTalker (avatar local gratis)
 SADTALKER_PATH = os.getenv("SADTALKER_PATH", str(Path.home() / "SadTalker"))
 HERMES_AVATAR_IMAGE = os.getenv("HERMES_AVATAR_IMAGE", "")
+
+# Parallel solver
+PARALLEL_SOLVER_WORKERS = int(os.getenv("PARALLEL_SOLVER_WORKERS", "3"))
+
+# Evolution
+EVOLUTION_ITERATIONS = int(os.getenv("EVOLUTION_ITERATIONS", "3"))
 
 # Google Stitch (AI UI design)
 STITCH_API_KEY = os.getenv("STITCH_API_KEY", "")
