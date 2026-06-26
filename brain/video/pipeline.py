@@ -21,6 +21,9 @@ class PipelineConfig:
     use_google_ai_video: bool = False
     use_broll_replicate: bool = False
     use_heygen_avatar: bool = False
+    use_pollinations_images: bool = False
+    use_pollinations_video: bool = False
+    use_sadtalker_avatar: bool = False
     stock_query_override: str = ""
     tts_backend: str = ""
     clone_original_voice: bool = False
@@ -168,6 +171,42 @@ def _produce_video(
 
     script = result.script
 
+    # === SADTALKER AVATAR (gratis, local) ===
+    if config.use_sadtalker_avatar:
+        logger.info("Generando avatar con SadTalker (gratis)...")
+        if job:
+            update_stage(job, "sadtalker_avatar")
+        try:
+            from video.tts import generate_speech
+            avatar_audio = str(output_dir / "avatar_narration.mp3")
+            tts_result = generate_speech(
+                script, avatar_audio,
+                voice=config.voice,
+                rate=config.voice_rate,
+                backend=config.tts_backend,
+            )
+            if tts_result.success:
+                from video.sadtalker import generate_avatar_video as sadtalker_generate
+                avatar_result = sadtalker_generate(tts_result.audio_path)
+                if avatar_result.success:
+                    result.video_path = avatar_result.video_path
+                    result.duration = avatar_result.duration
+                    result.steps_completed.extend(["tts", "sadtalker_avatar"])
+                    if job:
+                        complete_step(job, "sadtalker_avatar")
+                        add_artifact(job, "video", avatar_result.video_path)
+                    if config.run_qc:
+                        result.qc_report = _run_qc(result.video_path, job)
+                    result.success = True
+                    result.awaiting_approval = False
+                    if job:
+                        complete_job(job)
+                    return result
+                else:
+                    logger.warning("SadTalker falló: %s", avatar_result.error)
+        except Exception as e:
+            logger.warning("SadTalker falló: %s", e)
+
     # === HEYGEN AVATAR (si está habilitado, genera el video completo con avatar) ===
     if config.use_heygen_avatar:
         logger.info("Generando video con HeyGen avatar...")
@@ -256,6 +295,40 @@ def _produce_video(
                         add_artifact(job, "broll", p)
         except Exception as e:
             logger.warning("B-roll Replicate falló: %s", e)
+
+    # Pollinations Images (gratis, sin API key)
+    if config.use_pollinations_images and not background_clips:
+        logger.info("Generando imágenes con Pollinations (gratis)...")
+        if job:
+            update_stage(job, "pollinations_images")
+        try:
+            from video.pollinations import generate_scene_images
+            w, h = (1080, 1920) if config.format == "vertical" else (1920, 1080) if config.format == "horizontal" else (1080, 1080)
+            image_paths = generate_scene_images(script, num_scenes=config.google_ai_scenes, width=w, height=h)
+            background_clips = image_paths
+            if image_paths:
+                result.steps_completed.append("pollinations_images")
+                if job:
+                    complete_step(job, "pollinations_images")
+        except Exception as e:
+            logger.warning("Pollinations images falló: %s", e)
+
+    # Pollinations Video (gratis, sin API key)
+    if config.use_pollinations_video and not background_clips:
+        logger.info("Generando video con Pollinations (gratis)...")
+        if job:
+            update_stage(job, "pollinations_video")
+        try:
+            from video.pollinations import generate_scene_videos
+            aspect = "9:16" if config.format == "vertical" else "16:9" if config.format == "horizontal" else "1:1"
+            video_paths = generate_scene_videos(script, num_scenes=config.broll_scenes, aspect_ratio=aspect)
+            background_clips = video_paths
+            if video_paths:
+                result.steps_completed.append("pollinations_video")
+                if job:
+                    complete_step(job, "pollinations_video")
+        except Exception as e:
+            logger.warning("Pollinations video falló: %s", e)
 
     # Google AI Images
     if config.use_google_ai_images and not background_clips:

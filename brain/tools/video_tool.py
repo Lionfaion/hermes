@@ -46,8 +46,8 @@ class ReplicateViralTool(BaseTool):
             },
             "visual_mode": {
                 "type": "string",
-                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video', 'broll', 'heygen'",
-                "enum": ["stock", "google_images", "google_video", "broll", "heygen"],
+                "description": "Fuente de visuales: 'stock' (gratis), 'pollinations_images' (gratis IA), 'pollinations_video' (gratis IA), 'broll' (Replicate), 'google_images', 'google_video', 'heygen', 'sadtalker' (gratis avatar local)",
+                "enum": ["stock", "pollinations_images", "pollinations_video", "broll", "google_images", "google_video", "heygen", "sadtalker"],
             },
         },
         "required": ["source_url", "new_topic"],
@@ -73,10 +73,13 @@ class ReplicateViralTool(BaseTool):
             clone_original_voice=clone_voice,
             require_approval=not skip_approval,
             use_stock_footage=visual_mode == "stock",
+            use_pollinations_images=visual_mode == "pollinations_images",
+            use_pollinations_video=visual_mode == "pollinations_video",
             use_google_ai_images=visual_mode == "google_images",
             use_google_ai_video=visual_mode == "google_video",
             use_broll_replicate=visual_mode == "broll",
             use_heygen_avatar=visual_mode == "heygen",
+            use_sadtalker_avatar=visual_mode == "sadtalker",
         )
         result = replicate_viral(source_url, new_topic, config)
 
@@ -139,8 +142,8 @@ class ProduceVideoTool(BaseTool):
             },
             "visual_mode": {
                 "type": "string",
-                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video', 'broll', 'heygen'",
-                "enum": ["stock", "google_images", "google_video", "broll", "heygen"],
+                "description": "Fuente de visuales: 'stock' (gratis), 'pollinations_images' (gratis IA), 'pollinations_video' (gratis IA), 'broll' (Replicate), 'google_images', 'google_video', 'heygen', 'sadtalker' (gratis avatar local)",
+                "enum": ["stock", "pollinations_images", "pollinations_video", "broll", "google_images", "google_video", "heygen", "sadtalker"],
             },
             "stock_query": {
                 "type": "string",
@@ -178,10 +181,13 @@ class ProduceVideoTool(BaseTool):
             tts_backend=tts_backend if tts_backend else "",
             require_approval=False,
             use_stock_footage=visual_mode == "stock",
+            use_pollinations_images=visual_mode == "pollinations_images",
+            use_pollinations_video=visual_mode == "pollinations_video",
             use_google_ai_images=visual_mode == "google_images",
             use_google_ai_video=visual_mode == "google_video",
             use_broll_replicate=visual_mode == "broll",
             use_heygen_avatar=visual_mode == "heygen",
+            use_sadtalker_avatar=visual_mode == "sadtalker",
             stock_query_override=stock_query,
             burn_captions=burn_captions,
         )
@@ -243,8 +249,8 @@ class GenerateVideoTool(BaseTool):
             },
             "visual_mode": {
                 "type": "string",
-                "description": "Fuente de visuales: 'stock', 'google_images', 'google_video', 'broll', 'heygen'",
-                "enum": ["stock", "google_images", "google_video", "broll", "heygen"],
+                "description": "Fuente de visuales: 'stock' (gratis), 'pollinations_images' (gratis IA), 'pollinations_video' (gratis IA), 'broll' (Replicate), 'google_images', 'google_video', 'heygen', 'sadtalker' (gratis avatar local)",
+                "enum": ["stock", "pollinations_images", "pollinations_video", "broll", "google_images", "google_video", "heygen", "sadtalker"],
             },
             "burn_captions": {
                 "type": "boolean",
@@ -274,10 +280,13 @@ class GenerateVideoTool(BaseTool):
             tts_backend=tts_backend if tts_backend else "",
             require_approval=False,
             use_stock_footage=visual_mode == "stock",
+            use_pollinations_images=visual_mode == "pollinations_images",
+            use_pollinations_video=visual_mode == "pollinations_video",
             use_google_ai_images=visual_mode == "google_images",
             use_google_ai_video=visual_mode == "google_video",
             use_broll_replicate=visual_mode == "broll",
             use_heygen_avatar=visual_mode == "heygen",
+            use_sadtalker_avatar=visual_mode == "sadtalker",
             stock_query_override=stock_query,
             clone_original_voice=bool(voice_reference_path),
             burn_captions=burn_captions,

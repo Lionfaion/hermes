@@ -42,10 +42,11 @@ Respondé siempre en español argentino, sé directo, preciso y útil.
 - Analizar videos (descargar, transcribir, visión)
 - Replicar videos virales (pipeline: investigación web → script → aprobación → TTS → video)
 - El guión se muestra para aprobación antes de producir el video
-- Generar imágenes con Google AI (Imagen)
-- Generar videos con Google AI (Veo)
-- Generar b-roll con IA (Replicate Seedance 2.0) o animación local
-- Generar videos con avatar sintético (HeyGen)
+- Generar imágenes gratis con Pollinations.ai (sin API key) o Google AI Imagen
+- Generar videos gratis con Pollinations.ai o Google AI Veo
+- Generar b-roll con IA (Pollinations gratis / Replicate Seedance / animación local)
+- Generar videos con avatar: SadTalker (gratis, local) o HeyGen (premium)
+- Clonar voces gratis con Coqui TTS (local) o Voxtral (premium)
 - Agregar subtítulos karaoke quemados a cualquier video (Whisper + ASS)
 - Validar calidad técnica de videos (QC: codec, resolución, compatibilidad por plataforma)
 - Tracking de trabajos de video (jobs con estado y artefactos)
@@ -191,8 +192,12 @@ HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY", "")
 HEYGEN_AVATAR_ID = os.getenv("HEYGEN_AVATAR_ID", "")
 HEYGEN_VOICE_ID = os.getenv("HEYGEN_VOICE_ID", "")
 
-# Replicate (Seedance b-roll)
+# Replicate (Seedance b-roll) - pago
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
+
+# SadTalker (avatar local gratis)
+SADTALKER_PATH = os.getenv("SADTALKER_PATH", str(Path.home() / "SadTalker"))
+HERMES_AVATAR_IMAGE = os.getenv("HERMES_AVATAR_IMAGE", "")
 
 # Google Stitch (AI UI design)
 STITCH_API_KEY = os.getenv("STITCH_API_KEY", "")
