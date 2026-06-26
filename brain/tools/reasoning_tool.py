@@ -1,6 +1,5 @@
 """Tools for reasoning, self-evolution, and advanced AI capabilities."""
 
-import json
 from tools.base import BaseTool
 
 
@@ -335,3 +334,143 @@ class AgentStatsTool(BaseTool):
             f"Reward máximo: {stats['max_reward']}\n"
             f"Reward mínimo: {stats['min_reward']}"
         )
+
+
+class MoATool(BaseTool):
+    @property
+    def name(self) -> str:
+        return "mixture_of_agents"
+
+    @property
+    def description(self) -> str:
+        return "Consulta múltiples perspectivas de expertos en paralelo y sintetiza la mejor respuesta. Ideal para decisiones importantes."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "La consulta o decisión a analizar"},
+                "perspectives": {
+                    "type": "string",
+                    "description": "Perspectivas separadas por coma: pragmatist, critic, innovator, analyst, user_advocate",
+                },
+            },
+            "required": ["query"],
+        }
+
+    def execute(self, **kwargs) -> str:
+        from reasoning.moa import mixture_of_agents
+        perspectives = None
+        if kwargs.get("perspectives"):
+            perspectives = [p.strip() for p in kwargs["perspectives"].split(",")]
+        result = mixture_of_agents(query=kwargs["query"], perspectives=perspectives)
+
+        parts = [f"**Mixture-of-Agents ({result.num_perspectives} perspectivas)**\n"]
+        for name, resp in result.perspectives.items():
+            parts.append(f"### {name.upper()}:")
+            parts.append(resp[:300] + ("..." if len(resp) > 300 else ""))
+            parts.append("")
+        parts.append(f"### SÍNTESIS FINAL:")
+        parts.append(result.final_response)
+        return "\n".join(parts)
+
+
+class CodeDiagnosticsTool(BaseTool):
+    @property
+    def name(self) -> str:
+        return "code_diagnostics"
+
+    @property
+    def description(self) -> str:
+        return "Analiza un archivo de código para encontrar errores, warnings y problemas usando LSP/linters."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Ruta al archivo a analizar"},
+                "project_root": {"type": "string", "description": "Raíz del proyecto (opcional)"},
+            },
+            "required": ["file_path"],
+        }
+
+    def execute(self, **kwargs) -> str:
+        from tools.lsp_client import get_diagnostics
+        result = get_diagnostics(kwargs["file_path"], kwargs.get("project_root", ""))
+        if not result.success:
+            return f"Error: {result.error}"
+        if not result.data:
+            return f"Sin problemas detectados en {kwargs['file_path']}"
+
+        parts = [f"**Diagnósticos para {kwargs['file_path']}:**\n"]
+        for d in result.data:
+            parts.append(f"- [{d.severity.upper()}] L{d.line}: {d.message} ({d.source})")
+        return "\n".join(parts)
+
+
+class CodeDefinitionTool(BaseTool):
+    @property
+    def name(self) -> str:
+        return "find_definition"
+
+    @property
+    def description(self) -> str:
+        return "Encuentra la definición de un símbolo (función, clase, variable) en el código fuente."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Archivo de referencia (para detectar lenguaje)"},
+                "symbol": {"type": "string", "description": "Nombre del símbolo a buscar"},
+                "project_root": {"type": "string", "description": "Raíz del proyecto (opcional)"},
+            },
+            "required": ["file_path", "symbol"],
+        }
+
+    def execute(self, **kwargs) -> str:
+        from tools.lsp_client import get_definition
+        result = get_definition(kwargs["file_path"], kwargs["symbol"], kwargs.get("project_root", ""))
+        if not result.success or not result.data:
+            return f"No se encontró definición de '{kwargs['symbol']}'"
+
+        parts = [f"**Definición de '{kwargs['symbol']}':**\n"]
+        for loc in result.data[:10]:
+            parts.append(f"- {loc.file}:{loc.line}")
+        return "\n".join(parts)
+
+
+class CodeReferencesTool(BaseTool):
+    @property
+    def name(self) -> str:
+        return "find_references"
+
+    @property
+    def description(self) -> str:
+        return "Encuentra todas las referencias a un símbolo en el proyecto."
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Archivo de referencia (para detectar lenguaje)"},
+                "symbol": {"type": "string", "description": "Símbolo a buscar"},
+                "project_root": {"type": "string", "description": "Raíz del proyecto (opcional)"},
+            },
+            "required": ["file_path", "symbol"],
+        }
+
+    def execute(self, **kwargs) -> str:
+        from tools.lsp_client import get_references
+        result = get_references(kwargs["file_path"], kwargs["symbol"], kwargs.get("project_root", ""))
+        if not result.success or not result.data:
+            return f"No se encontraron referencias a '{kwargs['symbol']}'"
+
+        parts = [f"**{len(result.data)} referencias a '{kwargs['symbol']}':**\n"]
+        for loc in result.data[:20]:
+            parts.append(f"- {loc.file}:{loc.line}")
+        return "\n".join(parts)

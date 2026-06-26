@@ -22,7 +22,8 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
             "Explicá tu razonamiento paso a paso."
         ),
         model=OLLAMA_MODEL,
-        tool_names=["run_command", "analyze_file", "web_search", "github"],
+        tool_names=["run_command", "analyze_file", "web_search", "github",
+                     "code_diagnostics", "find_definition", "find_references"],
     ),
     "analyst": AgentProfile(
         name="Analista",
@@ -33,7 +34,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         ),
         model=OLLAMA_MODEL,
         tool_names=["analyze_file", "search_notes", "vault_read", "vault_list", "web_search",
-                     "autoreason", "parallel_solve"],
+                     "autoreason", "parallel_solve", "mixture_of_agents"],
     ),
     "media_specialist": AgentProfile(
         name="Especialista en Media",
@@ -153,6 +154,7 @@ AGENT_PROFILES: dict[str, AgentProfile] = {
         ),
         model=OLLAMA_MODEL,
         tool_names=["delegate_to_agent", "web_search", "search_notes",
-                     "autoreason", "parallel_solve", "evolve_prompt", "agent_stats"],
+                     "autoreason", "parallel_solve", "mixture_of_agents",
+                     "evolve_prompt", "agent_stats"],
     ),
 }

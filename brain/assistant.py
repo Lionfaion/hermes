@@ -284,6 +284,7 @@ def _get_registry() -> ToolRegistry:
             AutoReasonTool, ParallelSolveTool, ReasoningPracticeTool,
             EvolvePromptTool, NeuralSteerTool, AbliterateTool,
             KanbanVideoTool, NovelWriterTool, AgentStatsTool,
+            MoATool, CodeDiagnosticsTool, CodeDefinitionTool, CodeReferencesTool,
         )
         _tool_registry.register(AutoReasonTool())
         _tool_registry.register(ParallelSolveTool())
@@ -294,6 +295,10 @@ def _get_registry() -> ToolRegistry:
         _tool_registry.register(KanbanVideoTool())
         _tool_registry.register(NovelWriterTool())
         _tool_registry.register(AgentStatsTool())
+        _tool_registry.register(MoATool())
+        _tool_registry.register(CodeDiagnosticsTool())
+        _tool_registry.register(CodeDefinitionTool())
+        _tool_registry.register(CodeReferencesTool())
     except Exception as e:
         logger.warning("Reasoning/AI tools no disponibles: %s", e)
 
@@ -325,6 +330,23 @@ class HermesAssistant:
         init_db()
         logger.info("Sesión iniciada: %s", self.session_id)
 
+    def _maybe_compress(self, messages: list) -> list:
+        """Compress context if it's getting too large."""
+        try:
+            from context.compressor import compress_context, estimate_tokens
+            token_est = estimate_tokens(messages)
+            if token_est > 6000 or len(messages) > 30:
+                result = compress_context(messages, max_messages=30, model=self.model)
+                if result.compressed_count < result.original_count:
+                    logger.info(
+                        "Context compressed: %d → %d messages (pruned %d tool outputs)",
+                        result.original_count, result.compressed_count, result.pruned_tool_outputs,
+                    )
+                    return result.messages
+        except Exception as e:
+            logger.debug("Context compression skipped: %s", e)
+        return messages
+
     def _build_messages(self, user_input: str = "") -> list:
         system_content = SYSTEM_PROMPT
 
@@ -352,6 +374,7 @@ class HermesAssistant:
 
         messages = [{"role": "system", "content": system_content}]
         messages += get_history(self.session_id)
+        messages = self._maybe_compress(messages)
         return messages
 
     def _get_vault_context(self, query: str) -> str:
@@ -414,10 +437,19 @@ class HermesAssistant:
             return f"[Error]: {e}"
 
     def _tool_call_loop(self, messages: list) -> str:
-        """Loop de tool calling: el LLM decide qué herramienta usar."""
+        """Loop de tool calling con budget inteligente y clasificación de errores."""
         schemas = self.registry.get_schemas()
 
+        try:
+            from agents.budget import get_budget_manager
+            budget = get_budget_manager().get_budget(self.session_id)
+        except Exception:
+            budget = None
+
         for iteration in range(TOOL_MAX_ITERATIONS):
+            if budget and budget.exhausted:
+                logger.warning("Iteration budget exhausted for session %s", self.session_id)
+                return response.get("content", "") or "[Se agotó el presupuesto de iteraciones]"
             response = chat_with_tools(messages, schemas, self.model)
 
             tool_calls = response.get("tool_calls")
@@ -454,6 +486,11 @@ class HermesAssistant:
                         continue
                 except Exception:
                     pass
+
+                if budget and not budget.consume(name):
+                    result = "[BUDGET] Presupuesto de iteraciones agotado"
+                    messages.append({"role": "tool", "content": result})
+                    continue
 
                 result = self.registry.execute(name, args)
                 messages.append({"role": "tool", "content": result})

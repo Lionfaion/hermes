@@ -35,8 +35,11 @@ def list_models() -> list:
 
 
 def _post_chat(payload: dict) -> dict:
-    """Envía un request a /api/chat con reintentos y retorna el JSON completo."""
+    """Envía un request a /api/chat con reintentos y clasificación de errores."""
+    from inference_errors import classify_error
+
     last_error: Exception = RuntimeError("Unknown error")
+    last_classified = None
 
     for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
         try:
@@ -52,11 +55,27 @@ def _post_chat(payload: dict) -> dict:
             last_error = TimeoutError(
                 f"GPU node timed out after {OLLAMA_TIMEOUT}s. Model may still be loading."
             )
+        except httpx.HTTPStatusError as e:
+            last_error = RuntimeError(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
         except Exception as e:
             last_error = RuntimeError(f"Inference error: {e}")
+
+        last_classified = classify_error(last_error)
+        logger.warning(
+            "Attempt %d/%d [%s]: %s -> %s",
+            attempt, INFERENCE_RETRY_ATTEMPTS,
+            last_classified.category.value,
+            str(last_error)[:100],
+            last_classified.recovery_action,
+        )
+
+        if not last_classified.retryable:
             break
 
-        logger.warning("Attempt %d/%d failed: %s", attempt, INFERENCE_RETRY_ATTEMPTS, last_error)
+        if last_classified.retry_delay > 0 and attempt < INFERENCE_RETRY_ATTEMPTS:
+            import time
+            delay = last_classified.retry_delay * (2 ** (attempt - 1))
+            time.sleep(min(delay, 30))
 
     raise last_error
 
