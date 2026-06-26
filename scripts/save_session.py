@@ -1,4 +1,4 @@
-"""Guarda el resumen de la sesión en GitHub como issue."""
+"""Guarda el resumen de la sesion en GitHub como issue."""
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'brain'))
@@ -23,40 +23,42 @@ headers = {
     'User-Agent': 'Hermes-AI-Assistant',
 }
 
-body_text = """## Resumen de sesion 2026-06-25
+body_text = """## Rutina nocturna de aprendizaje automatico — 3am Argentina
 
-### Features implementadas
-- **Gemini fallback**: si Ollama offline, usa gemini-2.0-flash automaticamente
-- **Fecha en system prompt**: inyecta fecha/hora actual en cada respuesta
-- **/status**, **/tools**, **/logs** (sube log a Gist privado)
-- **/improve**: auto-mejora de comportamiento
-  - Lee ultimas 80 interacciones de la DB
-  - Las manda a Gemini con prompt de coach de IA
-  - Guarda reglas en vault Obsidian (Hermes/Mejoras.md)
-  - Las reglas se inyectan automaticamente en cada system prompt
-- **GitHub tool**: ya integrado — lista repos, issues, PRs, lee archivos, crea issues
+### Que se implemento
+- `brain/nightly_learning.py`: conversacion multi-turno con Gemini cada noche
+  - Fase 1: analiza ultimas conversaciones, identifica 3-5 temas a aprender
+  - Fase 2: por cada tema, 3 turnos con Gemini (explicacion, aplicacion, regla)
+  - Fase 3: corre auto-mejora de comportamiento
+  - Guarda en vault: `Hermes/Aprendizaje/YYYY-MM-DD.md` + `Hermes/Mejoras.md`
+  - Envia notificacion Telegram al terminar
+- `scripts/nightly.bat`: wrapper para schtask de Windows
+- Schtask `HermesNightlyLearning` creado en Lenovo (03:00 AM diario)
+- `TELEGRAM_CHAT_ID=8389062307` agregado al .env de Lenovo
 
-### Archivos nuevos/modificados
-- `brain/self_improvement.py` (NUEVO)
-- `brain/assistant.py` — `_load_memories()` carga mejoras del vault
-- `brain/interface/telegram_bot.py` — /improve, /logs, /tools mejorado
-- `brain/inference_client.py` — `chat_google()` + fallback en `respond()`
+### Actualizacion de modelo Gemini
+- `gemini-2.0-flash` deprecado (404 NOT_FOUND desde jun 2026)
+- Nuevo default en `brain/config.py`: `gemini-2.5-flash`
+- Afecta: fallback de chat, self_improvement, nightly_learning
 
-### Infraestructura
-- SSH a Lenovo (192.168.0.182) via `~/.ssh/hermes_key`, user: chsan
-- Bot corre via schtask `HermesBotStart` (requiere sesion interactiva Windows)
-- Restart: `ssh -i ~/.ssh/hermes_key chsan@192.168.0.182 "powershell ..."`
-- GPU node Ollama: 192.168.0.145:11434
-- Log: C:\\Users\\chsan\\hermes\\logs\\hermes.log
-- `drop_pending_updates=True`: mensajes antes del reinicio se descartan
+### Test exitoso
+- Primera ejecucion manual: 2026-06-25 22:53
+- 4 temas aprendidos, nota guardada en vault, Telegram notificado
+
+### Archivos modificados/creados
+- `brain/nightly_learning.py` (nuevo)
+- `scripts/nightly.bat` (nuevo)
+- `brain/config.py` — modelo gemini actualizado
+- `brain/self_improvement.py` — del turno anterior
+- `brain/assistant.py` — carga mejoras del vault
+- `brain/interface/telegram_bot.py` — comando /improve
 
 ### Pendiente
 - [ ] Hermes mas rapido: Gemini como LLM primario (no solo fallback)
-- [ ] Primera ejecucion real de /improve con conversaciones acumuladas
 """
 
 payload = {
-    'title': '[Sesion 2026-06-25] Auto-mejora, Gemini fallback, SSH Lenovo, comandos Telegram',
+    'title': '[2026-06-25] Rutina nocturna 3am: aprendizaje automatico + gemini-2.5-flash',
     'body': body_text,
 }
 
@@ -68,6 +70,6 @@ r = requests.post(
 )
 if r.ok:
     data = r.json()
-    print(f"Issue creado: #{data['number']} — {data.get('html_url', '')}")
+    print(f"Issue creado: #{data['number']} -- {data.get('html_url', '')}")
 else:
-    print(f"Error: {r.status_code} — {r.text[:300]}")
+    print(f"Error: {r.status_code} -- {r.text[:300]}")
