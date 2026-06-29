@@ -10,6 +10,10 @@ from config import (
     OLLAMA_MODEL,
     OLLAMA_TIMEOUT,
     INFERENCE_RETRY_ATTEMPTS,
+    OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_MODEL,
+    OPENROUTER_TIMEOUT,
     ZAI_API_KEY,
     ZAI_BASE_URL,
     ZAI_MODEL,
@@ -19,7 +23,8 @@ from config import (
 logger = logging.getLogger(__name__)
 _OLLAMA_URL = f"http://{GPU_NODE_HOST}:{GPU_NODE_PORT}"
 
-_USE_ZAI = bool(ZAI_API_KEY)
+_USE_OPENROUTER = bool(OPENROUTER_API_KEY)
+_USE_ZAI = bool(ZAI_API_KEY) and not _USE_OPENROUTER
 
 
 def _resolve_zai_model(requested: str | None) -> str:
@@ -29,12 +34,19 @@ def _resolve_zai_model(requested: str | None) -> str:
     return ZAI_MODEL
 
 
+def _get_openrouter_client():
+    from openai import OpenAI
+    return OpenAI(api_key=OPENROUTER_API_KEY, base_url=OPENROUTER_BASE_URL)
+
+
 def _get_openai_client():
     from openai import OpenAI
     return OpenAI(api_key=ZAI_API_KEY, base_url=ZAI_BASE_URL)
 
 
 def is_online() -> bool:
+    if _USE_OPENROUTER:
+        return True  # OpenRouter es siempre online
     if _USE_ZAI:
         try:
             client = _get_openai_client()
@@ -65,6 +77,82 @@ def list_models() -> list:
     except Exception as e:
         logger.warning("Could not list models: %s", e)
         return []
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter backend (prioridad 1)
+# ---------------------------------------------------------------------------
+
+def _openrouter_chat(messages: list, model: str, tools: list | None = None, stream: bool = False) -> dict:
+    from inference_errors import classify_error
+
+    last_error: Exception = RuntimeError("Unknown error")
+
+    for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
+        try:
+            client = _get_openrouter_client()
+            kwargs = {
+                "model": model,
+                "messages": messages,
+                "stream": stream,
+                "timeout": OPENROUTER_TIMEOUT,
+            }
+            if tools:
+                oai_tools = _convert_tools_to_openai(tools)
+                if oai_tools:
+                    kwargs["tools"] = oai_tools
+
+            response = client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+
+            result = {"content": msg.content or ""}
+            if msg.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": json.loads(tc.function.arguments)
+                            if isinstance(tc.function.arguments, str)
+                            else tc.function.arguments,
+                        }
+                    }
+                    for tc in msg.tool_calls
+                ]
+            return result
+
+        except Exception as e:
+            last_error = RuntimeError(f"OpenRouter error: {e}")
+            classified = classify_error(last_error)
+            logger.warning(
+                "OpenRouter attempt %d/%d [%s]: %s -> %s",
+                attempt, INFERENCE_RETRY_ATTEMPTS,
+                classified.category.value,
+                str(last_error)[:100],
+                classified.recovery_action,
+            )
+            if not classified.retryable:
+                break
+            if classified.retry_delay > 0 and attempt < INFERENCE_RETRY_ATTEMPTS:
+                import time
+                time.sleep(min(classified.retry_delay * (2 ** (attempt - 1)), 30))
+
+    raise last_error
+
+
+def _openrouter_chat_stream(messages: list, model: str) -> Generator:
+    try:
+        client = _get_openrouter_client()
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            timeout=OPENROUTER_TIMEOUT,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        raise RuntimeError(f"OpenRouter stream error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +299,9 @@ def _post_chat(payload: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def chat(messages: list, model: str | None = None) -> str:
+    if _USE_OPENROUTER:
+        result = _openrouter_chat(messages, model or OPENROUTER_MODEL)
+        return result["content"]
     if _USE_ZAI:
         result = _zai_chat(messages, _resolve_zai_model(model))
         return result["content"]
@@ -220,6 +311,8 @@ def chat(messages: list, model: str | None = None) -> str:
 
 def chat_with_tools(messages: list, tools: list, model: str | None = None) -> dict:
     """Chat con soporte de tool calling. Retorna el dict message completo."""
+    if _USE_OPENROUTER:
+        return _openrouter_chat(messages, model or OPENROUTER_MODEL, tools=tools)
     if _USE_ZAI:
         return _zai_chat(messages, _resolve_zai_model(model), tools=tools)
     payload = {"model": model or OLLAMA_MODEL, "messages": messages, "stream": False}
@@ -231,12 +324,13 @@ def chat_with_tools(messages: list, tools: list, model: str | None = None) -> di
 
 def chat_with_images(messages: list, images: list[str], model: str | None = None) -> str:
     """Chat con imágenes (base64). Para modelos de visión como LLaVA."""
-    if _USE_ZAI:
-        zai_messages = []
+    # OpenRouter y Z.ai usan el mismo formato de imagen
+    if _USE_OPENROUTER or _USE_ZAI:
+        src_messages = []
         for msg in messages:
-            zai_messages.append(dict(msg))
-        if zai_messages and images:
-            last = zai_messages[-1]
+            src_messages.append(dict(msg))
+        if src_messages and images:
+            last = src_messages[-1]
             content_parts = [{"type": "text", "text": last.get("content", "")}]
             for img in images:
                 content_parts.append({
@@ -244,7 +338,10 @@ def chat_with_images(messages: list, images: list[str], model: str | None = None
                     "image_url": {"url": f"data:image/jpeg;base64,{img}"},
                 })
             last["content"] = content_parts
-        result = _zai_chat(zai_messages, _resolve_zai_model(model))
+        if _USE_OPENROUTER:
+            result = _openrouter_chat(src_messages, model or OPENROUTER_MODEL)
+        else:
+            result = _zai_chat(src_messages, _resolve_zai_model(model))
         return result["content"]
 
     if messages and images:
@@ -257,6 +354,9 @@ def chat_with_images(messages: list, images: list[str], model: str | None = None
 
 
 def chat_stream(messages: list, model: str | None = None) -> Generator:
+    if _USE_OPENROUTER:
+        yield from _openrouter_chat_stream(messages, model or OPENROUTER_MODEL)
+        return
     if _USE_ZAI:
         yield from _zai_chat_stream(messages, _resolve_zai_model(model))
         return

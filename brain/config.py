@@ -14,11 +14,16 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 INFERENCE_RETRY_ATTEMPTS = int(os.getenv("INFERENCE_RETRY_ATTEMPTS", "2"))
 
-# Z.ai / Zhipu AI (GLM models — cloud inference)
-# When ZAI_API_KEY is set, Z.ai is used instead of Ollama
+# OpenRouter — cloud inference, prioridad 1
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+OPENROUTER_TIMEOUT = int(os.getenv("OPENROUTER_TIMEOUT", "120"))
+
+# Z.ai / Zhipu AI (GLM models — cloud inference, prioridad 2)
 ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
 ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4/")
-ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4-flash-250414")
+ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.5-air")
 ZAI_TIMEOUT = int(os.getenv("ZAI_TIMEOUT", "120"))
 
 # Assistant identity
