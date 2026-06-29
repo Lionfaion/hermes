@@ -348,7 +348,11 @@ class HermesAssistant:
         return messages
 
     def _build_messages(self, user_input: str = "") -> list:
-        system_content = SYSTEM_PROMPT
+        try:
+            from soul import CORE_PROMPT, TOOLS_REFERENCE
+            system_content = CORE_PROMPT
+        except ImportError:
+            system_content = SYSTEM_PROMPT
 
         # Inyectar lecciones aprendidas
         skills = _get_skills()
@@ -366,11 +370,15 @@ class HermesAssistant:
         if TOOL_CALLING_ENABLED:
             tool_names = self.registry.list_tools()
             if tool_names:
-                system_content += (
-                    "\n\nTenés acceso a herramientas que podés usar cuando sea necesario. "
-                    "Usá las herramientas de forma inteligente: no las uses si podés responder "
-                    "directamente con tu conocimiento."
-                )
+                try:
+                    from soul import TOOLS_REFERENCE
+                    system_content += f"\n\n{TOOLS_REFERENCE}"
+                except ImportError:
+                    system_content += (
+                        "\n\nTenés acceso a herramientas que podés usar cuando sea necesario. "
+                        "Usá las herramientas de forma inteligente: no las uses si podés responder "
+                        "directamente con tu conocimiento."
+                    )
 
         messages = [{"role": "system", "content": system_content}]
         messages += get_history(self.session_id)
