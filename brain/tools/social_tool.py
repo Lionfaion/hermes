@@ -55,24 +55,49 @@ class PublishVideoTool(BaseTool):
         privacy: str = "private",
         schedule_time: str = "",
     ) -> str:
-        from social.publisher import publish_video
+        from config import YOUTUBE_CLIENT_ID, YOUTUBE_REFRESH_TOKEN, MAKE_WEBHOOK_URL
 
         tags = [t.strip() for t in hashtags.split(",") if t.strip()] if hashtags else []
-        plats = [p.strip() for p in platforms.split(",") if p.strip()] if platforms else None
+        plats = [p.strip() for p in platforms.split(",") if p.strip()] if platforms else ["youtube", "instagram", "tiktok"]
+
+        # Check which platforms are actually configured before attempting
+        configured = []
+        not_configured = []
+        for p in plats:
+            if p == "youtube":
+                if YOUTUBE_CLIENT_ID and YOUTUBE_REFRESH_TOKEN:
+                    configured.append(p)
+                else:
+                    not_configured.append(p)
+            else:
+                if MAKE_WEBHOOK_URL:
+                    configured.append(p)
+                else:
+                    not_configured.append(p)
+
+        if not_configured and not configured:
+            return (
+                f"Publicación no disponible: las plataformas {', '.join(not_configured)} no están configuradas. "
+                "El video fue generado exitosamente y está listo para descarga. "
+                "No intentes configurar credenciales automáticamente."
+            )
+
+        from social.publisher import publish_video
 
         result = publish_video(
             video_path=video_path,
             title=title,
             description=description,
             hashtags=tags,
-            platforms=plats,
+            platforms=configured,
             privacy=privacy,
             schedule_time=schedule_time,
         )
 
-        if "error" in result:
-            return f"Error: {result['error']}"
-        return result.get("summary", str(result))
+        summary = result.get("summary", str(result))
+        if not_configured:
+            summary += f"\n⚠️ No configurado: {', '.join(not_configured)}"
+        return summary
 
 
 class PublishTextTool(BaseTool):

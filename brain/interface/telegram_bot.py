@@ -12,9 +12,10 @@ from pathlib import Path
 import httpx
 
 # Asegurar que ffmpeg esté en PATH
-_FFMPEG_BIN = r"C:\Users\chsan\ffmpeg\bin"
-if _FFMPEG_BIN not in os.environ.get("PATH", ""):
-    os.environ["PATH"] = _FFMPEG_BIN + ";" + os.environ.get("PATH", "")
+for _ffmpeg_candidate in [r"C:\Users\Cris\ffmpeg\bin", r"C:\ffmpeg\bin", r"C:\Program Files\ffmpeg\bin"]:
+    if os.path.isdir(_ffmpeg_candidate) and _ffmpeg_candidate not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _ffmpeg_candidate + ";" + os.environ.get("PATH", "")
+        break
 
 # Dump stack trace on crash (Windows access violations, etc.)
 faulthandler.enable()
@@ -262,14 +263,27 @@ async def cmd_viral(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         if not ok:
             await update.message.reply_text(
-                f"No pude enviar el video por Telegram (podría ser demasiado grande o lento). "
-                f"El archivo está en el servidor: {Path(compressed).name}"
+                f"No pude enviar el video por Telegram (podría ser demasiado grande o lento).\n"
+                f"El archivo está en el servidor:\n{compressed}"
             )
 
         # Publicar en YouTube via Make.com
         pub_result = await loop.run_in_executor(None, _publish_video, video_path, topic, result.get("script", ""))
-        status = "YouTube: publicado" if pub_result.get("success") else f"YouTube: {pub_result.get('error','error')}"
-        await msg.edit_text(f"Listo.\n{status}\nPasos completados: {', '.join(result['steps'])}")
+        yt_result = pub_result.get("platforms", {}).get("youtube", {})
+        if yt_result.get("success"):
+            status = f"YouTube: publicado{' → ' + yt_result['url'] if yt_result.get('url') else ''}"
+        else:
+            yt_error = yt_result.get("error") or pub_result.get("summary") or "error desconocido"
+            status = f"YouTube: error — {yt_error}"
+
+        final_msg = f"Listo.\n{status}\nPasos completados: {', '.join(result['steps'])}"
+        await msg.edit_text(final_msg)
+
+        # Guardar el intercambio en el historial de sesión para que el contexto persista
+        from memory import save_message
+        session_id = f"tg_{update.effective_user.id}"
+        save_message(session_id, "user", f"/viral {url} {topic}")
+        save_message(session_id, "assistant", final_msg + (f"\nRuta del video: {compressed}" if not ok else ""))
 
     except Exception as e:
         logger.error("cmd_viral error: %s", e, exc_info=True)
@@ -280,7 +294,7 @@ def _run_viral_pipeline(url: str, topic: str) -> dict:
     try:
         import config  # noqa — carga .env
         from video.pipeline import replicate_viral, PipelineConfig
-        cfg = PipelineConfig(voice="es-ar-male", format="vertical", use_stock_footage=True)
+        cfg = PipelineConfig(voice="es-ar-male", format="vertical", use_stock_footage=True, require_approval=False)
         r = replicate_viral(source_url=url, new_topic=topic, config=cfg)
         return {
             "success": r.success,
@@ -392,8 +406,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         file = await context.bot.get_file(voice.file_id)
         await file.download_to_drive(str(ogg_path))
 
+        loop = asyncio.get_event_loop()
         from media.transcriber import transcribe
-        text = transcribe(str(ogg_path))
+        text = await loop.run_in_executor(None, transcribe, str(ogg_path))
 
         if not text or text.startswith("["):
             await update.message.reply_text("No pude entender el audio. Intentá de nuevo.")
@@ -406,7 +421,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.message.reply_text(error)
             return
 
-        response = _get_session(user_id).respond(clean_text)
+        response = await loop.run_in_executor(None, _get_session(user_id).respond, clean_text)
         if not response:
             return
 
@@ -437,9 +452,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         chat_id=update.effective_chat.id, action="typing"
     )
 
-    response = _get_session(user_id).respond(clean_text)
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(None, _get_session(user_id).respond, clean_text)
     if not response:
         return
+
+    # Detectar paths de video MP4 para enviar el archivo directamente
+    import re as _re
+    _video_path_to_send = None
+    _vm = _re.search(r'[A-Za-z]:[/\\][\w/\\. -]+\.mp4', response)
+    if _vm:
+        _video_path_to_send = _vm.group(0).replace("\\\\", "\\")
+    if not _video_path_to_send:
+        # Fallback: path detectado en resultados de tools (no siempre aparece en el texto)
+        _sess = _get_session(user_id)
+        _video_path_to_send = getattr(_sess, "last_video_path", None)
+    if _video_path_to_send and Path(_video_path_to_send).exists():
+        try:
+            from video.assembler import compress_for_telegram
+            loop = asyncio.get_event_loop()
+            compressed = await loop.run_in_executor(None, compress_for_telegram, _video_path_to_send, 20)
+            caption = response[:900].replace(_video_path_to_send, "").strip() or "Video generado"
+            await _send_video_direct(TELEGRAM_TOKEN, update.effective_chat.id, compressed, caption)
+            _get_session(user_id).last_video_path = None  # reset para el siguiente video
+            return
+        except Exception as e:
+            logger.warning("No se pudo enviar el video por Telegram: %s", e)
 
     if _voice_mode.get(user_id, False):
         await _send_voice_reply(update, response)

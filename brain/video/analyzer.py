@@ -3,7 +3,11 @@
 import logging
 import re
 
-from inference_client import chat
+from inference_client import (
+    chat, is_online as _ollama_online,
+    is_groq_available, chat_groq,
+    GOOGLE_AI_API_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +77,8 @@ REGLAS DE CONTENIDO:
 - Mantené el mismo formato y estructura que funciona
 - El hook debe ser igual de potente en los primeros 3 segundos
 - Cambiá el tema/contenido pero mantené el estilo y ritmo
-- Duración similar al original
+- DURACIÓN OBJETIVO: {target_words} palabras aproximadamente (para un video de ~{target_secs:.0f} segundos)
+- Mínimo 150 palabras siempre, aunque el video original sea más corto
 
 INFORMACIÓN DE CONTEXTO SOBRE EL TEMA:
 {web_context}
@@ -124,6 +129,29 @@ def is_script_valid(script: str) -> bool:
     return True
 
 
+def _video_chat(messages: list, model: str) -> str:
+    """Llama al LLM disponible: Ollama → Google AI → Groq (último recurso).
+
+    El pipeline de video genera prompts largos. Preferimos Gemini sobre Groq
+    para no agotar el TPM de Groq que se necesita para las tool dispatch calls.
+    """
+    if _ollama_online():
+        return chat(messages, model)
+    if GOOGLE_AI_API_KEY:
+        from inference_client import chat_google
+        return chat_google(messages)
+    if is_groq_available():
+        # Último recurso: Groq con truncado para evitar 413/429
+        trimmed = []
+        for m in messages:
+            if m.get("role") == "user" and len(m.get("content", "")) > 6000:
+                m = dict(m)
+                m["content"] = m["content"][:6000] + "\n[...truncado]"
+            trimmed.append(m)
+        return chat_groq(trimmed)
+    raise RuntimeError("Sin proveedor de IA disponible para el pipeline de video")
+
+
 def research_topic(topic: str) -> str:
     """Busca información sobre el tema en la web para enriquecer el guión."""
     try:
@@ -135,6 +163,43 @@ def research_topic(topic: str) -> str:
         logger.warning("Web search para topic falló: %s", e)
 
     return ""
+
+
+def infer_topic(analysis: str, transcript: str = "") -> str:
+    """Infiere el tema del video desde el análisis o la transcripción cuando no se especificó."""
+    _instruction_re = re.compile(
+        r'palabras?\s+clave|stock\s+footage|buscar|listá?|listar|similares?|imágenes?',
+        re.IGNORECASE,
+    )
+
+    # Extraer keywords del análisis estructurado, filtrando líneas de instrucción
+    kw_match = re.search(r'##\s*KEYWORDS[^\n]*\n(.*?)(?=\n##|\Z)', analysis, re.DOTALL | re.IGNORECASE)
+    if kw_match:
+        section = kw_match.group(1).strip()
+        actual_keywords = []
+        for line in section.splitlines():
+            line = line.strip()
+            if not line or _instruction_re.search(line):
+                continue
+            clean = re.sub(r'^[\d\.\-\*\s]+|\*+', '', line).strip()
+            if clean:
+                actual_keywords.append(clean)
+        if actual_keywords:
+            return " ".join(actual_keywords[:3])[:200]
+
+    # Extraer tema del hook
+    hook_match = re.search(r'##\s*HOOK[^\n]*\n(.*?)(?=\n##|\Z)', analysis, re.DOTALL | re.IGNORECASE)
+    if hook_match:
+        hook = hook_match.group(1).strip()
+        if hook and not _instruction_re.search(hook.splitlines()[0] if hook.splitlines() else hook):
+            return hook[:200]
+
+    # Fallback: primeras palabras del transcript
+    if transcript:
+        words = transcript.strip().split()[:20]
+        return " ".join(words)
+
+    return "contenido similar al video original"
 
 
 def analyze_viral_video(transcript: str, visual_descriptions: list[str], model: str = None) -> str:
@@ -155,10 +220,16 @@ def analyze_viral_video(transcript: str, visual_descriptions: list[str], model: 
         {"role": "user", "content": context},
     ]
 
-    return chat(messages, model)
+    return _video_chat(messages, model)
 
 
-def generate_new_script(analysis: str, topic: str, model: str = None, max_retries: int = 2) -> str:
+def generate_new_script(
+    analysis: str,
+    topic: str,
+    model: str = None,
+    max_retries: int = 2,
+    original_duration_secs: float = 0.0,
+) -> str:
     """Genera un guión nuevo basado en el análisis de un video viral.
 
     Busca información web sobre el tema, valida que el resultado sea un guión real,
@@ -171,11 +242,18 @@ def generate_new_script(analysis: str, topic: str, model: str = None, max_retrie
     if not web_context:
         web_context = "(No se encontró información adicional, generá el guión con tu conocimiento)"
 
+    # Estimar palabras objetivo: ~2.5 palabras/segundo para narración en español
+    # Mínimo 150 palabras (~60s) para que el video tenga sustancia
+    target_words = max(150, int(original_duration_secs * 2.5)) if original_duration_secs > 0 else 150
+    target_secs = max(60.0, original_duration_secs)
+
     for attempt in range(max_retries + 1):
         prompt = REWRITE_PROMPT.format(
             analysis=analysis,
             topic=topic,
             web_context=web_context,
+            target_words=target_words,
+            target_secs=target_secs,
         )
 
         system_msg = (
@@ -192,7 +270,7 @@ def generate_new_script(analysis: str, topic: str, model: str = None, max_retrie
             {"role": "user", "content": prompt},
         ]
 
-        script = chat(messages, model)
+        script = _video_chat(messages, model)
 
         if is_script_valid(script):
             return sanitize_script(script)

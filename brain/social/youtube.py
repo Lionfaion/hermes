@@ -22,11 +22,15 @@ def _get_access_token() -> str | None:
     if not YOUTUBE_REFRESH_TOKEN:
         return None
 
+    import time
     if TOKEN_CACHE.exists():
         try:
             cached = json.loads(TOKEN_CACHE.read_text())
-            if cached.get("access_token"):
-                return cached["access_token"]
+            access_token = cached.get("access_token")
+            created_at = cached.get("created_at", 0)
+            expires_in = cached.get("expires_in", 3600)
+            if access_token and (time.time() - created_at) < (expires_in - 60):
+                return access_token
         except Exception:
             pass
 
@@ -39,6 +43,7 @@ def _get_access_token() -> str | None:
         }, timeout=30)
         resp.raise_for_status()
         data = resp.json()
+        data["created_at"] = time.time()
         TOKEN_CACHE.write_text(json.dumps(data))
         return data.get("access_token")
     except Exception as e:

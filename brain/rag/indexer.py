@@ -39,20 +39,28 @@ class VaultIndexer:
         self._model = None
         self._client = None
         self._collection = None
+        self._unavailable = False  # True si ChromaDB no pudo inicializar
 
     def _ensure_initialized(self):
-        if self._model is not None:
+        if self._unavailable:
+            raise RuntimeError("ChromaDB no disponible (incompatibilidad con Python 3.14). Búsqueda de notas desactivada.")
+        if self._model is not None and self._collection is not None:
             return
         logger.info("Cargando modelo de embeddings (primera vez descarga ~90MB)...")
         from sentence_transformers import SentenceTransformer
         import chromadb
         self._model = SentenceTransformer("all-MiniLM-L6-v2")
-        self._client = chromadb.PersistentClient(path=self.db_path)
-        self._collection = self._client.get_or_create_collection(
-            name="vault",
-            metadata={"hnsw:space": "cosine"}
-        )
-        logger.info("Modelo listo.")
+        try:
+            self._client = chromadb.PersistentClient(path=self.db_path)
+            self._collection = self._client.get_or_create_collection(
+                name="vault",
+                metadata={"hnsw:space": "cosine"}
+            )
+            logger.info("Modelo listo.")
+        except Exception as e:
+            self._unavailable = True
+            logger.warning("ChromaDB no pudo inicializar (%s). Búsqueda de notas desactivada.", e)
+            raise RuntimeError(f"ChromaDB no disponible: {e}") from e
 
     @property
     def model(self):
@@ -99,7 +107,10 @@ class VaultIndexer:
             return 0
 
     def index_vault(self) -> int:
-        self._ensure_initialized()
+        try:
+            self._ensure_initialized()
+        except RuntimeError:
+            return 0
         md_files = list(self.vault.rglob("*.md"))
         if not md_files:
             logger.info("No se encontraron notas en %s", self.vault)
