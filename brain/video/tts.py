@@ -202,6 +202,59 @@ def _generate_voxtral(
 
 
 # ══════════════════════════════════════════
+#  COQUI TTS (gratis, open source, clonación de voz local)
+# ══════════════════════════════════════════
+
+def _generate_coqui(
+    text: str,
+    output_path: str,
+    voice_reference_path: str = "",
+    language: str = "es",
+) -> TTSResult:
+    """Genera audio con Coqui TTS XTTS v2 (local, gratis, soporta clonación)."""
+    try:
+        from TTS.api import TTS
+    except ImportError:
+        return TTSResult(
+            success=False,
+            error="Coqui TTS no instalado. Ejecutá: pip install TTS"
+        )
+
+    try:
+        model_name = "tts_models/multilingual/multi-dataset/xtts_v2"
+        tts = TTS(model_name)
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        if voice_reference_path and Path(voice_reference_path).exists():
+            tts.tts_to_file(
+                text=text,
+                speaker_wav=voice_reference_path,
+                language=language,
+                file_path=output_path,
+            )
+            logger.info("Coqui TTS: voz clonada desde %s", voice_reference_path)
+        else:
+            tts.tts_to_file(
+                text=text,
+                language=language,
+                file_path=output_path,
+            )
+
+        duration = _get_audio_duration(output_path)
+
+        return TTSResult(
+            success=True,
+            audio_path=output_path,
+            duration=duration,
+            backend="coqui",
+        )
+    except Exception as e:
+        logger.error("Coqui TTS falló: %s", e)
+        return TTSResult(success=False, error=str(e))
+
+
+# ══════════════════════════════════════════
 #  API PÚBLICA (selecciona backend automáticamente)
 # ══════════════════════════════════════════
 
@@ -226,11 +279,24 @@ def generate_speech(
     # Auto-selección de backend
     if not backend:
         if voice_reference_path:
-            backend = "voxtral"
+            if MISTRAL_API_KEY:
+                backend = "voxtral"
+            else:
+                backend = "coqui"
         elif voice in VOXTRAL_VOICES:
             backend = "voxtral"
         else:
             backend = DEFAULT_BACKEND
+
+    if backend == "coqui":
+        result = _generate_coqui(
+            text, output_path,
+            voice_reference_path=voice_reference_path,
+        )
+        if not result.success and voice in EDGE_VOICES:
+            logger.warning("Coqui TTS falló, fallback a Edge-TTS: %s", result.error)
+            return asyncio.run(_generate_edge_tts(text, output_path, voice, rate))
+        return result
 
     if backend == "voxtral":
         result = _generate_voxtral(
@@ -238,10 +304,16 @@ def generate_speech(
             voice=voice,
             voice_reference_path=voice_reference_path,
         )
-        # Fallback a Edge-TTS si Voxtral falla
-        if not result.success and voice in EDGE_VOICES:
-            logger.warning("Voxtral falló, fallback a Edge-TTS: %s", result.error)
-            return asyncio.run(_generate_edge_tts(text, output_path, voice, rate))
+        # Fallback a Coqui si Voxtral falla, luego a Edge-TTS
+        if not result.success:
+            if voice_reference_path:
+                logger.warning("Voxtral falló, intentando Coqui TTS: %s", result.error)
+                coqui_result = _generate_coqui(text, output_path, voice_reference_path=voice_reference_path)
+                if coqui_result.success:
+                    return coqui_result
+            if voice in EDGE_VOICES:
+                logger.warning("Fallback a Edge-TTS")
+                return asyncio.run(_generate_edge_tts(text, output_path, voice, rate))
         return result
 
     return asyncio.run(_generate_edge_tts(text, output_path, voice, rate))
@@ -254,11 +326,20 @@ def clone_voice(
 ) -> TTSResult:
     """Clona una voz a partir de un audio de referencia (2-25 segundos).
 
-    Usa Voxtral TTS de Mistral. Requiere MISTRAL_API_KEY.
+    Usa Coqui TTS XTTS v2 (gratis, local) o Voxtral (si MISTRAL_API_KEY está configurada).
     """
-    return _generate_voxtral(
+    if MISTRAL_API_KEY:
+        result = _generate_voxtral(
+            text, output_path,
+            voice="casual_male",
+            voice_reference_path=reference_audio,
+        )
+        if result.success:
+            return result
+        logger.warning("Voxtral falló para clonación, intentando Coqui: %s", result.error)
+
+    return _generate_coqui(
         text, output_path,
-        voice="casual_male",
         voice_reference_path=reference_audio,
     )
 

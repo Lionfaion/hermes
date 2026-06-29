@@ -1,56 +1,15 @@
 import logging
-import re
 import uuid
 from typing import Optional, Generator
-
-from pathlib import Path
 
 from config import (
     ASSISTANT_NAME, OLLAMA_MODEL, SYSTEM_PROMPT, RAG_ENABLED, LEARNING_ENABLED,
     VAULT_PATH, CHROMA_PATH, TOOL_CALLING_ENABLED, TOOL_MAX_ITERATIONS,
-    AGENTS_ENABLED, WEB_ENABLED, WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_REGION,
-    GOOGLE_AI_API_KEY,
+    AGENTS_ENABLED,
 )
 from memory import init_db, save_message, get_history, clear_session
-from inference_client import is_online, chat, chat_stream, chat_with_tools, chat_google
+from inference_client import is_online, chat, chat_stream, chat_with_tools
 from tools.registry import ToolRegistry
-
-_MEMORIES_NOTE = "Hermes/Memorias"  # path relativo dentro del vault (sin .md)
-_vault_indexer = None
-_vault_searcher = None
-
-
-def _get_vault_rag():
-    """Inicializa y retorna el indexer+searcher del vault (lazy, singleton)."""
-    global _vault_indexer, _vault_searcher
-    if _vault_searcher is not None:
-        return _vault_indexer, _vault_searcher
-    if not RAG_ENABLED:
-        return None, None
-    try:
-        from rag.indexer import VaultIndexer
-        from rag.searcher import VaultSearcher
-        _vault_indexer = VaultIndexer(vault_path=VAULT_PATH, db_path=CHROMA_PATH)
-        _vault_searcher = VaultSearcher(_vault_indexer)
-        # Indexar en segundo plano solo si el vault tiene notas
-        vault = Path(VAULT_PATH)
-        if list(vault.rglob("*.md")):
-            import threading
-            threading.Thread(target=_vault_indexer.index_vault, daemon=True).start()
-    except Exception as e:
-        logger.warning("RAG no disponible: %s", e)
-    return _vault_indexer, _vault_searcher
-
-_WEB_SEARCH_TRIGGERS = {
-    "busca", "buscá", "buscar", "googlea", "googleá", "googlear",
-    "qué pasó", "qué paso", "qué dice", "qué dicen", "qué es",
-    "quién es", "quien es", "qué hay", "qué hubo",
-    "noticias", "última hora", "últimas noticias", "novedades",
-    "precio de", "cuánto sale", "cuanto sale", "cotización", "cotizacion",
-    "dólar", "dolar", "euro", "clima", "tiempo en", "pronóstico",
-    "wikipedia", "encontrá", "investigá", "búscame", "busqueme",
-    "reciente", "recientes", "actual", "actualidad", "hoy en día",
-}
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +138,8 @@ def _get_registry() -> ToolRegistry:
         from tools.video_tool import (
             ReplicateViralTool, GenerateVideoTool, AnalyzeViralTool,
             CloneVoiceTool, ProduceVideoTool, GenerateImageTool,
+            GenerateBrollTool, HeyGenAvatarTool, AddCaptionsTool,
+            VideoQCTool, ListVideoJobsTool,
         )
         _tool_registry.register(ReplicateViralTool())
         _tool_registry.register(GenerateVideoTool())
@@ -186,6 +147,11 @@ def _get_registry() -> ToolRegistry:
         _tool_registry.register(CloneVoiceTool())
         _tool_registry.register(ProduceVideoTool())
         _tool_registry.register(GenerateImageTool())
+        _tool_registry.register(GenerateBrollTool())
+        _tool_registry.register(HeyGenAvatarTool())
+        _tool_registry.register(AddCaptionsTool())
+        _tool_registry.register(VideoQCTool())
+        _tool_registry.register(ListVideoJobsTool())
     except Exception as e:
         logger.warning("Video tools no disponibles: %s", e)
 
@@ -312,6 +278,30 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Director tool no disponible: %s", e)
 
+    # Reasoning, evolution, steering, and advanced AI tools
+    try:
+        from tools.reasoning_tool import (
+            AutoReasonTool, ParallelSolveTool, ReasoningPracticeTool,
+            EvolvePromptTool, NeuralSteerTool, AbliterateTool,
+            KanbanVideoTool, NovelWriterTool, AgentStatsTool,
+            MoATool, CodeDiagnosticsTool, CodeDefinitionTool, CodeReferencesTool,
+        )
+        _tool_registry.register(AutoReasonTool())
+        _tool_registry.register(ParallelSolveTool())
+        _tool_registry.register(ReasoningPracticeTool())
+        _tool_registry.register(EvolvePromptTool())
+        _tool_registry.register(NeuralSteerTool())
+        _tool_registry.register(AbliterateTool())
+        _tool_registry.register(KanbanVideoTool())
+        _tool_registry.register(NovelWriterTool())
+        _tool_registry.register(AgentStatsTool())
+        _tool_registry.register(MoATool())
+        _tool_registry.register(CodeDiagnosticsTool())
+        _tool_registry.register(CodeDefinitionTool())
+        _tool_registry.register(CodeReferencesTool())
+    except Exception as e:
+        logger.warning("Reasoning/AI tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
@@ -340,101 +330,31 @@ class HermesAssistant:
         init_db()
         logger.info("Sesión iniciada: %s", self.session_id)
 
-    def _load_memories(self) -> str:
-        """Lee la nota de memorias del vault e inyecta en el system prompt."""
-        parts = []
+    def _maybe_compress(self, messages: list) -> list:
+        """Compress context if it's getting too large."""
         try:
-            vault = Path(VAULT_PATH)
-            note = (vault / _MEMORIES_NOTE).with_suffix(".md")
-            if note.exists():
-                content = note.read_text(encoding="utf-8", errors="ignore").strip()
-                if content:
-                    parts.append(f"[Lo que sé del usuario — información persistente]\n{content}")
+            from context.compressor import compress_context, estimate_tokens
+            token_est = estimate_tokens(messages)
+            if token_est > 6000 or len(messages) > 30:
+                result = compress_context(messages, max_messages=30, model=self.model)
+                if result.compressed_count < result.original_count:
+                    logger.info(
+                        "Context compressed: %d → %d messages (pruned %d tool outputs)",
+                        result.original_count, result.compressed_count, result.pruned_tool_outputs,
+                    )
+                    return result.messages
         except Exception as e:
-            logger.debug("_load_memories error: %s", e)
-
-        try:
-            from self_improvement import load_improvements
-            improvements = load_improvements()
-            if improvements:
-                parts.append(f"[Comportamiento aprendido de auto-mejora]\n{improvements}")
-        except Exception as e:
-            logger.debug("_load_improvements error: %s", e)
-
-        return "\n\n".join(parts)
-
-    def _search_vault(self, query: str) -> str:
-        """Búsqueda semántica en el vault para contexto relevante al mensaje."""
-        _, searcher = _get_vault_rag()
-        if searcher is None:
-            return ""
-        try:
-            ctx = searcher.build_context(query)
-            return ctx
-        except Exception as e:
-            logger.debug("_search_vault error: %s", e)
-        return ""
-
-    def _fetch_web_context(self, user_input: str) -> str:
-        """Auto-búsqueda web si el mensaje lo requiere. Retorna contexto formateado o ''."""
-        if not WEB_ENABLED:
-            return ""
-        try:
-            text = user_input.strip()
-
-            # URL explícita → fetch
-            url_match = re.search(r'https?://\S+', text)
-            if url_match:
-                url = url_match.group(0).rstrip('.,)')
-                # Usar Playwright (renderiza JS) para capturar SPAs y páginas dinámicas
-                try:
-                    from web.browser import browse_page
-                    result = browse_page(url)
-                except Exception:
-                    result = None
-                # Fallback a scraper estático si Playwright falla
-                if not result or not result.success or len(result.text.strip()) < 100:
-                    from web.scraper import fetch_page
-                    static = fetch_page(url)
-                    if static.success and len(static.text.strip()) > (len(result.text.strip()) if result else 0):
-                        result = static
-                if result and result.success:
-                    content = result.text.strip()[:5000]
-                    header = f"Título: {result.title}" if result.title else ""
-                    return f"{header}\n\n{content}".strip()
-                return ""
-
-            # Detección de intención de búsqueda
-            lower = text.lower()
-            needs_search = any(trigger in lower for trigger in _WEB_SEARCH_TRIGGERS)
-            if not needs_search:
-                return ""
-
-            from web.search import web_search, format_search_results
-            results = web_search(text, max_results=WEB_SEARCH_MAX_RESULTS, region=WEB_SEARCH_REGION)
-            if results:
-                logger.info("Web search ejecutada para: %.60s", text)
-                return format_search_results(results)
-        except Exception as e:
-            logger.warning("_fetch_web_context falló: %s", e)
-        return ""
+            logger.debug("Context compression skipped: %s", e)
+        return messages
 
     def _build_messages(self, user_input: str = "") -> list:
-        from datetime import datetime
-        today = datetime.now().strftime("%A %d de %B de %Y, %H:%M")
-        system_content = f"Fecha y hora actual: {today}\n\n{SYSTEM_PROMPT}"
+        try:
+            from soul import CORE_PROMPT, TOOLS_REFERENCE
+            system_content = CORE_PROMPT
+        except ImportError:
+            system_content = SYSTEM_PROMPT
 
-        # Memorias persistentes del vault (siempre incluidas)
-        memories = self._load_memories()
-        if memories:
-            system_content += f"\n\n{memories}"
-
-        # Contexto semántico del vault relevante al mensaje
-        if user_input:
-            vault_ctx = self._search_vault(user_input)
-            if vault_ctx:
-                system_content += f"\n\n{vault_ctx}"
-
+        # Inyectar lecciones aprendidas
         skills = _get_skills()
         if skills:
             injection = skills.build_system_injection()
@@ -450,14 +370,19 @@ class HermesAssistant:
         if TOOL_CALLING_ENABLED:
             tool_names = self.registry.list_tools()
             if tool_names:
-                system_content += (
-                    "\n\nTenés acceso a herramientas que podés usar cuando sea necesario. "
-                    "Usá las herramientas de forma inteligente: no las uses si podés responder "
-                    "directamente con tu conocimiento."
-                )
+                try:
+                    from soul import TOOLS_REFERENCE
+                    system_content += f"\n\n{TOOLS_REFERENCE}"
+                except ImportError:
+                    system_content += (
+                        "\n\nTenés acceso a herramientas que podés usar cuando sea necesario. "
+                        "Usá las herramientas de forma inteligente: no las uses si podés responder "
+                        "directamente con tu conocimiento."
+                    )
 
         messages = [{"role": "system", "content": system_content}]
         messages += get_history(self.session_id)
+        messages = self._maybe_compress(messages)
         return messages
 
     def _get_vault_context(self, query: str) -> str:
@@ -498,29 +423,18 @@ class HermesAssistant:
 
         save_message(self.session_id, "user", user_input)
 
-        ollama_online = is_online()
+        if not is_online():
+            logger.warning("GPU node offline")
+            return _OFFLINE_MSG
 
         try:
-            web_context = self._fetch_web_context(user_input)
             messages = self._build_messages(user_input)
+            messages.append({"role": "user", "content": user_input})
 
-            if web_context:
-                augmented = f"{user_input}\n\n---\n{web_context}\n---"
-                messages.append({"role": "user", "content": augmented})
+            if TOOL_CALLING_ENABLED:
+                response = self._tool_call_loop(messages)
             else:
-                messages.append({"role": "user", "content": user_input})
-
-            if ollama_online:
-                if TOOL_CALLING_ENABLED:
-                    response = self._tool_call_loop(messages)
-                else:
-                    response = chat(messages, self.model)
-            elif GOOGLE_AI_API_KEY:
-                logger.info("GPU node offline — usando Google AI como fallback")
-                response = chat_google(messages)
-            else:
-                logger.warning("GPU node offline y sin fallback de Google AI")
-                return _OFFLINE_MSG
+                response = chat(messages, self.model)
 
             save_message(self.session_id, "assistant", response)
             if ilog:
@@ -528,20 +442,22 @@ class HermesAssistant:
             return response
         except Exception as e:
             logger.error("respond() falló: %s", e)
-            if not ollama_online and GOOGLE_AI_API_KEY:
-                try:
-                    messages_fallback = self._build_messages(user_input)
-                    messages_fallback.append({"role": "user", "content": user_input})
-                    return chat_google(messages_fallback)
-                except Exception as e2:
-                    logger.error("Google AI fallback también falló: %s", e2)
             return f"[Error]: {e}"
 
     def _tool_call_loop(self, messages: list) -> str:
-        """Loop de tool calling: el LLM decide qué herramienta usar."""
+        """Loop de tool calling con budget inteligente y clasificación de errores."""
         schemas = self.registry.get_schemas()
 
+        try:
+            from agents.budget import get_budget_manager
+            budget = get_budget_manager().get_budget(self.session_id)
+        except Exception:
+            budget = None
+
         for iteration in range(TOOL_MAX_ITERATIONS):
+            if budget and budget.exhausted:
+                logger.warning("Iteration budget exhausted for session %s", self.session_id)
+                return response.get("content", "") or "[Se agotó el presupuesto de iteraciones]"
             response = chat_with_tools(messages, schemas, self.model)
 
             tool_calls = response.get("tool_calls")
@@ -567,6 +483,23 @@ class HermesAssistant:
                     except json.JSONDecodeError:
                         args = {}
 
+                # Governance: check policy before executing
+                try:
+                    from governance.policy_engine import check_permission
+                    decision = check_permission(name, agent_name=getattr(self, '_current_agent', ''), args=args)
+                    if not decision.allowed:
+                        result = f"[BLOQUEADO] Herramienta '{name}' denegada por política: {decision.rule_name}"
+                        logger.warning("Governance DENY: %s -> %s", name, decision.rule_name)
+                        messages.append({"role": "tool", "content": result})
+                        continue
+                except Exception:
+                    pass
+
+                if budget and not budget.consume(name):
+                    result = "[BUDGET] Presupuesto de iteraciones agotado"
+                    messages.append({"role": "tool", "content": result})
+                    continue
+
                 result = self.registry.execute(name, args)
                 messages.append({"role": "tool", "content": result})
 
@@ -588,14 +521,8 @@ class HermesAssistant:
             return
 
         try:
-            web_context = self._fetch_web_context(user_input)
             messages = self._build_messages(user_input)
-
-            if web_context:
-                augmented = f"{user_input}\n\n---\n{web_context}\n---"
-                messages.append({"role": "user", "content": augmented})
-            else:
-                messages.append({"role": "user", "content": user_input})
+            messages.append({"role": "user", "content": user_input})
 
             if TOOL_CALLING_ENABLED:
                 response = self._tool_call_loop(messages)
