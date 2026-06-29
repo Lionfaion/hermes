@@ -27,6 +27,13 @@ _USE_OPENROUTER = bool(OPENROUTER_API_KEY)
 _USE_ZAI = bool(ZAI_API_KEY) and not _USE_OPENROUTER
 
 
+def _resolve_openrouter_model(requested: str | None) -> str:
+    """Ollama names (e.g. qwen2.5:7b) get replaced with OPENROUTER_MODEL."""
+    if requested and "/" in requested:
+        return requested  # ya es un model ID de OpenRouter
+    return OPENROUTER_MODEL
+
+
 def _resolve_zai_model(requested: str | None) -> str:
     """Map model param to Z.ai model. Ollama names get replaced with ZAI_MODEL."""
     if requested and requested.startswith("glm"):
@@ -300,7 +307,7 @@ def _post_chat(payload: dict) -> dict:
 
 def chat(messages: list, model: str | None = None) -> str:
     if _USE_OPENROUTER:
-        result = _openrouter_chat(messages, model or OPENROUTER_MODEL)
+        result = _openrouter_chat(messages, _resolve_openrouter_model(model))
         return result["content"]
     if _USE_ZAI:
         result = _zai_chat(messages, _resolve_zai_model(model))
@@ -312,7 +319,7 @@ def chat(messages: list, model: str | None = None) -> str:
 def chat_with_tools(messages: list, tools: list, model: str | None = None) -> dict:
     """Chat con soporte de tool calling. Retorna el dict message completo."""
     if _USE_OPENROUTER:
-        return _openrouter_chat(messages, model or OPENROUTER_MODEL, tools=tools)
+        return _openrouter_chat(messages, _resolve_openrouter_model(model), tools=tools)
     if _USE_ZAI:
         return _zai_chat(messages, _resolve_zai_model(model), tools=tools)
     payload = {"model": model or OLLAMA_MODEL, "messages": messages, "stream": False}
@@ -339,7 +346,7 @@ def chat_with_images(messages: list, images: list[str], model: str | None = None
                 })
             last["content"] = content_parts
         if _USE_OPENROUTER:
-            result = _openrouter_chat(src_messages, model or OPENROUTER_MODEL)
+            result = _openrouter_chat(src_messages, _resolve_openrouter_model(model))
         else:
             result = _zai_chat(src_messages, _resolve_zai_model(model))
         return result["content"]
@@ -355,7 +362,7 @@ def chat_with_images(messages: list, images: list[str], model: str | None = None
 
 def chat_stream(messages: list, model: str | None = None) -> Generator:
     if _USE_OPENROUTER:
-        yield from _openrouter_chat_stream(messages, model or OPENROUTER_MODEL)
+        yield from _openrouter_chat_stream(messages, _resolve_openrouter_model(model))
         return
     if _USE_ZAI:
         yield from _zai_chat_stream(messages, _resolve_zai_model(model))
