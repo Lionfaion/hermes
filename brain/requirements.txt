@@ -32,3 +32,5 @@ Pillow>=10.0.0
 openai-whisper>=20231117
 # Video: Coqui TTS (free voice cloning)
 TTS>=0.22.0
+# Z.ai / Zhipu AI (OpenAI-compatible cloud inference)
+openai>=1.0.0

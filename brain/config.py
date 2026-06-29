@@ -7,12 +7,19 @@ try:
 except ImportError:
     pass
 
-# GPU Node (Main PC with Ollama)
+# GPU Node (Main PC with Ollama) — fallback when no cloud API is configured
 GPU_NODE_HOST = os.getenv("GPU_NODE_HOST", "192.168.1.100")
 GPU_NODE_PORT = int(os.getenv("GPU_NODE_PORT", "11434"))
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 INFERENCE_RETRY_ATTEMPTS = int(os.getenv("INFERENCE_RETRY_ATTEMPTS", "2"))
+
+# Z.ai / Zhipu AI (GLM models — cloud inference)
+# When ZAI_API_KEY is set, Z.ai is used instead of Ollama
+ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
+ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4/")
+ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4-flash-250414")
+ZAI_TIMEOUT = int(os.getenv("ZAI_TIMEOUT", "120"))
 
 # Assistant identity
 ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "Hermes")
