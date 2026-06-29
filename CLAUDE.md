@@ -2,24 +2,20 @@
 
 ## Estado — Sesión 2026-06-29 (ACTIVO)
 
-### ✅ Completado hoy
+### ✅ Completado hoy (2026-06-29)
 - SSH sin contraseña desde este PC a Lenovo: `ssh lenovo` funciona directo
 - No-sleep con tapa cerrada configurado en Lenovo (powercfg AC+DC)
-- `~/.ssh/config` creado con alias `lenovo`
-- `GPU_NODE_HOST` corregido a `192.168.0.182` en `brain/.env`
-- Descubrimiento: Lenovo NO tiene WSL2, Ollama NO estaba instalado
-- Descubrimiento: sistema corre en este PC con OpenRouter como LLM primario
-- Merge de `claude/fervent-euler-7v5g1u` → `master` (sesión anterior)
-
-### ⏳ En progreso
-- Instalando Ollama en Lenovo (download en curso)
+- `~/.ssh/config` creado con alias `lenovo → chsan@192.168.0.182`
+- `git pull` en Lenovo: 44 archivos, todo el código nuevo deployado
+- `openai` instalado en Lenovo (necesario para OpenRouter)
+- `.env` Lenovo actualizado con OpenRouter, Z.ai, Groq
+- Bot reiniciado con código nuevo (schtask HermesBotStart)
+- Arquitectura real documentada: bot en Lenovo, Ollama en este PC
 
 ### ⏳ Pendiente
-- Pull modelos Ollama: `qwen2.5:7b` y `obsidian:3b`
-- Cron jobs de aprendizaje (sin WSL2 → usar Windows Task Scheduler)
-- SadTalker (requiere WSL2 o Python nativo en Lenovo)
-- `.env` local: `VISION_MODEL`, `SADTALKER_PATH`, `WHISPER_MODEL_SIZE`
-- DHCP reservation en router para IP fija de Lenovo
+- DHCP reservation en router (MAC `C0-38-96-5E-43-D7` → IP fija `192.168.0.182`)
+- SadTalker (requiere dependencias pesadas, baja prioridad)
+- Agregar `OPENROUTER_API_KEY` al auto-update script si existe
 
 ---
 
@@ -38,19 +34,27 @@ Asistente de IA personal que responde por **Telegram**. Puede:
 ## Arquitectura real del sistema
 
 ```
-[Este PC — Windows C:\Users\Cris]              [Lenovo — 192.168.0.182]
-  Corre: bot Telegram (brain/main.py)    <──>    Corre: Ollama (fallback local)
-  LLM primario: OpenRouter (cloud)               Windows nativo, SIN WSL2
-  Fallback 1: Z.ai (sin saldo)                   SSH: chsan@192.168.0.182
-  Fallback 2: Ollama en Lenovo                   Usuario Windows: chsan
-  Fallback 3: Google Gemini                      Alias SSH: "lenovo"
+[Este PC — 192.168.0.145 (Cris)]              [Lenovo — 192.168.0.182 (chsan)]
+  Ollama (GPU node, puerto 11434)      <──>    Bot Telegram corre acá 24/7
+  Desarrollo con Claude Code                   Python: C:\Users\chsan\hermes-python\
+  Repo: C:\Users\Cris\hermes                  Repo: C:\Users\chsan\hermes
+                                               Vault: C:\Users\chsan\hermes-vault
+                                               schtask: HermesBotStart
+                                               schtask: HermesNightlyLearning (3am)
+```
+
+### Deploy flow
+```
+1. Desarrollar en este PC → git push
+2. ssh lenovo "cd C:\Users\chsan\hermes && git pull origin master"
+3. schtasks /run /tn HermesBotStart  (reinicia el bot)
 ```
 
 ### Cadena de inferencia (orden de prioridad)
 ```
-1. OpenRouter → google/gemma-4-31b-it:free   ← primario (funciona ahora)
-2. Z.ai → glm-4.5-air                        ← sin saldo, skip
-3. Ollama en Lenovo → qwen2.5:7b             ← fallback local
+1. OpenRouter → google/gemma-4-31b-it:free   ← primario (funciona)
+2. Z.ai → glm-4.5-air                        ← sin saldo, se saltea
+3. Ollama en ESTE PC → llama3.1:8b           ← fallback local (192.168.0.145)
 4. Google Gemini → gemini-2.5-flash          ← último recurso
 ```
 
