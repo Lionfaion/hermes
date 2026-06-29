@@ -21,6 +21,11 @@ cd ~ && git clone https://github.com/OpenTalker/SadTalker.git
 cd SadTalker && pip install -r requirements.txt && bash scripts/download_models.sh
 ```
 
+### ✅ Z.ai integrado (2026-06-29)
+- `ZAI_API_KEY` y `ZAI_MODEL=glm-4.5-air` seteados en `brain/.env`
+- Backend dual activo: Z.ai cuando hay key, Ollama como fallback
+- ⚠️ Cuenta Z.ai sin saldo — recargar en z.ai para activar; mientras tanto usa Gemini
+
 ### ⏳ Pendiente en brain/.env (este PC)
 ```
 VISION_MODEL=obsidian:3b
