@@ -10,7 +10,7 @@ except ImportError:
 # GPU Node (Main PC with Ollama) — fallback when no cloud API is configured
 GPU_NODE_HOST = os.getenv("GPU_NODE_HOST", "192.168.1.100")
 GPU_NODE_PORT = int(os.getenv("GPU_NODE_PORT", "11434"))
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 INFERENCE_RETRY_ATTEMPTS = int(os.getenv("INFERENCE_RETRY_ATTEMPTS", "2"))
 
