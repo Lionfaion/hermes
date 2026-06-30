@@ -34,8 +34,8 @@ logger = logging.getLogger("nightly")
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 def _chat(messages: list) -> str:
-    from inference_client import chat_google
-    return chat_google(messages)
+    from inference_client import chat
+    return chat(messages)
 
 
 def _get_recent_conversations(days: int = 7) -> str:
@@ -191,9 +191,9 @@ def _run_self_improvement() -> str:
 
 def run_nightly_learning() -> str:
     """Ejecuta la rutina nocturna completa. Retorna resumen."""
-    from config import GOOGLE_AI_API_KEY
-    if not GOOGLE_AI_API_KEY:
-        msg = "GOOGLE_AI_API_KEY no configurada — rutina nocturna cancelada."
+    from config import GOOGLE_AI_API_KEY, OPENROUTER_API_KEY
+    if not GOOGLE_AI_API_KEY and not OPENROUTER_API_KEY:
+        msg = "Sin API cloud configurada (GOOGLE_AI_API_KEY / OPENROUTER_API_KEY) — rutina nocturna cancelada."
         logger.error(msg)
         return msg
 

@@ -1,0 +1,30 @@
+default_action: allow
+rules:
+- action: deny
+  conditions:
+    args_contain:
+    - rm -rf
+    - mkfs
+    - dd if=
+    - '> /dev/'
+    - shutdown
+    - reboot
+  name: block_dangerous_commands
+  priority: 100
+  tools:
+  - run_command
+- action: deny
+  conditions:
+    max_active: 5
+  name: limit_background_tasks
+  priority: 50
+  tools:
+  - create_task
+- action: allow
+  agents:
+  - '*'
+  name: allow_all_default
+  priority: 0
+  tools:
+  - '*'
+version: '1.0'
