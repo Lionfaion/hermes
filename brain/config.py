@@ -302,6 +302,16 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 # GitHub
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
+# IOL Agent API (dashboard en Vercel)
+IOL_DASHBOARD_URL = os.getenv("IOL_DASHBOARD_URL", "")
+IOL_AGENT_API_KEY = os.getenv("IOL_AGENT_API_KEY", "")
+
+# Pump Scanner
+PUMP_SCAN_INTERVAL = int(os.getenv("PUMP_SCAN_INTERVAL", "300"))          # segundos, default 5 min
+PUMP_CONFIDENCE_THRESHOLD = int(os.getenv("PUMP_CONFIDENCE_THRESHOLD", "65"))
+PUMP_MIN_VOLUME_USD = float(os.getenv("PUMP_MIN_VOLUME_USD", "50000000")) # $50M mínimo
+PUMP_POSITION_SIZE_USD = float(os.getenv("PUMP_POSITION_SIZE_USD", "100"))
+
 # Web browsing
 WEB_ENABLED = os.getenv("WEB_ENABLED", "true").lower() == "true"
 WEB_SEARCH_REGION = os.getenv("WEB_SEARCH_REGION", "es-ar")

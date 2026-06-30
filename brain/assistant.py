@@ -302,6 +302,23 @@ def _get_registry() -> ToolRegistry:
     except Exception as e:
         logger.warning("Reasoning/AI tools no disponibles: %s", e)
 
+    # IOL Agent API — paper trading + oportunidades + crypto picks
+    try:
+        from config import IOL_DASHBOARD_URL, IOL_AGENT_API_KEY
+        if IOL_DASHBOARD_URL and IOL_AGENT_API_KEY:
+            from tools.iol_agent_tool import (
+                IOLAgentStatusTool, IOLCryptoPicksTool,
+                IOLOpportunitiesTool, IOLPaperTradeTool,
+            )
+            _tool_registry.register(IOLAgentStatusTool())
+            _tool_registry.register(IOLCryptoPicksTool())
+            _tool_registry.register(IOLOpportunitiesTool())
+            _tool_registry.register(IOLPaperTradeTool())
+        else:
+            logger.info("IOL Agent tools no activas (falta IOL_DASHBOARD_URL o IOL_AGENT_API_KEY en .env)")
+    except Exception as e:
+        logger.warning("IOL Agent tools no disponibles: %s", e)
+
     if AGENTS_ENABLED:
         try:
             from agents.orchestrator import DelegateToAgentTool
@@ -317,6 +334,19 @@ def _get_registry() -> ToolRegistry:
         scheduler.start()
     except Exception as e:
         logger.warning("Cron scheduler no iniciado: %s", e)
+
+    # Start pump scanner (autónomo, solo si IOL API configurada)
+    try:
+        from config import IOL_DASHBOARD_URL, IOL_AGENT_API_KEY, PUMP_SCAN_INTERVAL
+        if IOL_DASHBOARD_URL and IOL_AGENT_API_KEY:
+            from background.pump_scanner import PumpScannerWorker
+            _pump_scanner = PumpScannerWorker()
+            _pump_scanner.start()
+            logger.info("PumpScannerWorker iniciado (cada %ds)", PUMP_SCAN_INTERVAL)
+        else:
+            logger.info("PumpScanner inactivo (configurar IOL_DASHBOARD_URL + IOL_AGENT_API_KEY en .env)")
+    except Exception as e:
+        logger.warning("PumpScanner no iniciado: %s", e)
 
     logger.info("Tools registradas: %s", _tool_registry.list_tools())
     return _tool_registry
