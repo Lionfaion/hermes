@@ -535,6 +535,15 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
+    # Start autonomous pump scanner in background thread
+    try:
+        from background.pump_scanner import PumpScannerWorker
+        _pump_worker = PumpScannerWorker()
+        _pump_worker.start()
+        logger.info("PumpScannerWorker started")
+    except Exception as e:
+        logger.warning("PumpScannerWorker failed to start: %s", e)
+
     logger.info("Starting %s Telegram bot...", ASSISTANT_NAME)
     try:
         asyncio.run(_run(app))
