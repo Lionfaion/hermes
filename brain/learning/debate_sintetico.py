@@ -89,6 +89,7 @@ def seleccionar_tema() -> str:
 
 
 def run_debate(tema: str, rondas: int = 5) -> list:
+    import time
     logger.info("Iniciando debate — Tema: %s", tema)
     transcript = []
 
@@ -101,6 +102,7 @@ def run_debate(tema: str, rondas: int = 5) -> list:
     h_hist.append({"role": "assistant", "content": h_resp})
     transcript.append({"rol": "Hermes", "msg": h_resp})
     logger.info("Hermes abre: %s...", h_resp[:70])
+    time.sleep(4)
 
     for ronda in range(rondas):
         # Crítico responde a Hermes
@@ -109,6 +111,7 @@ def run_debate(tema: str, rondas: int = 5) -> list:
         c_hist.append({"role": "assistant", "content": c_resp})
         transcript.append({"rol": "Crítico", "msg": c_resp})
         logger.info("Ronda %d — Crítico: %s...", ronda + 1, c_resp[:60])
+        time.sleep(4)
 
         if ronda == rondas - 1:
             break

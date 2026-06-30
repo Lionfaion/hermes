@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 _OLLAMA_URL = f"http://{GPU_NODE_HOST}:{GPU_NODE_PORT}"
 
 _USE_OPENROUTER = bool(OPENROUTER_API_KEY)
-_USE_ZAI = bool(ZAI_API_KEY) and not _USE_OPENROUTER
+_USE_ZAI = bool(ZAI_API_KEY)
 
 
 def _resolve_openrouter_model(requested: str | None) -> str:
@@ -307,11 +307,17 @@ def _post_chat(payload: dict) -> dict:
 
 def chat(messages: list, model: str | None = None) -> str:
     if _USE_OPENROUTER:
-        result = _openrouter_chat(messages, _resolve_openrouter_model(model))
-        return result["content"]
+        try:
+            result = _openrouter_chat(messages, _resolve_openrouter_model(model))
+            return result["content"]
+        except Exception as e:
+            logger.warning("OpenRouter falló, intentando siguiente proveedor: %s", e)
     if _USE_ZAI:
-        result = _zai_chat(messages, _resolve_zai_model(model))
-        return result["content"]
+        try:
+            result = _zai_chat(messages, _resolve_zai_model(model))
+            return result["content"]
+        except Exception as e:
+            logger.warning("Z.ai falló, intentando Ollama: %s", e)
     data = _post_chat({"model": model or OLLAMA_MODEL, "messages": messages, "stream": False})
     return data["message"]["content"]
 
@@ -319,9 +325,15 @@ def chat(messages: list, model: str | None = None) -> str:
 def chat_with_tools(messages: list, tools: list, model: str | None = None) -> dict:
     """Chat con soporte de tool calling. Retorna el dict message completo."""
     if _USE_OPENROUTER:
-        return _openrouter_chat(messages, _resolve_openrouter_model(model), tools=tools)
+        try:
+            return _openrouter_chat(messages, _resolve_openrouter_model(model), tools=tools)
+        except Exception as e:
+            logger.warning("OpenRouter falló en tool call, intentando siguiente: %s", e)
     if _USE_ZAI:
-        return _zai_chat(messages, _resolve_zai_model(model), tools=tools)
+        try:
+            return _zai_chat(messages, _resolve_zai_model(model), tools=tools)
+        except Exception as e:
+            logger.warning("Z.ai falló en tool call, intentando Ollama: %s", e)
     payload = {"model": model or OLLAMA_MODEL, "messages": messages, "stream": False}
     if tools:
         payload["tools"] = tools
