@@ -309,11 +309,13 @@ def _get_registry() -> ToolRegistry:
             from tools.iol_agent_tool import (
                 IOLAgentStatusTool, IOLCryptoPicksTool,
                 IOLOpportunitiesTool, IOLPaperTradeTool,
+                IOLLearningTool,
             )
             _tool_registry.register(IOLAgentStatusTool())
             _tool_registry.register(IOLCryptoPicksTool())
             _tool_registry.register(IOLOpportunitiesTool())
             _tool_registry.register(IOLPaperTradeTool())
+            _tool_registry.register(IOLLearningTool())
         else:
             logger.info("IOL Agent tools no activas (falta IOL_DASHBOARD_URL o IOL_AGENT_API_KEY en .env)")
     except Exception as e:

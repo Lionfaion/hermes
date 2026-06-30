@@ -196,3 +196,72 @@ class IOLPaperTradeTool(BaseTool):
             )
 
         return f"[Error] Acción desconocida: {action}"
+
+
+class IOLLearningTool(BaseTool):
+    name = "iol_learning"
+    description = (
+        "Consulta el historial de aprendizaje del trading autónomo. "
+        "Muestra win rate, mejores señales, P&L total, duración promedio de trades ganadores. "
+        "Útil cuando el usuario pregunta '¿cómo viene el trading?', '¿qué aprendiste?', "
+        "'¿cuáles son las mejores señales?', '¿cuál es el rendimiento?'."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "outcome": {
+                "type": "string",
+                "enum": ["tp_hit", "sl_hit", "open", "all"],
+                "description": "Filtrar por resultado. Por defecto 'all'.",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Número máximo de trades a mostrar. Por defecto 20.",
+            },
+        },
+        "required": [],
+    }
+
+    def execute(self, outcome: str = "all", limit: int = 20, **_) -> str:
+        path = "/api/agent/learning"
+        params = []
+        if outcome and outcome != "all":
+            params.append(f"outcome={outcome}")
+        if limit:
+            params.append(f"limit={limit}")
+        if params:
+            path += "?" + "&".join(params)
+
+        result = _request("GET", path)
+        if "error" in result:
+            return f"[Learning Error] {result['error']}"
+
+        summary = result.get("summary", {})
+        entries = result.get("entries", [])
+        total = result.get("total", 0)
+
+        lines = [
+            f"📊 <b>Hermes Trading — Aprendizaje</b>",
+            f"Trades totales: {total} | Win rate: {summary.get('win_rate', 0)}%",
+            f"P&L total: ${summary.get('total_pnl_usd', 0)}",
+            f"Promedio ganadores: +${summary.get('avg_pnl_winners_usd', 0)}",
+            f"Promedio perdedores: ${summary.get('avg_pnl_losers_usd', 0)}",
+            f"Mejor señal: {summary.get('best_signal', 'n/a')}",
+            f"Duración promedio ganadores: {summary.get('avg_held_hours_winners', 0)}hs",
+        ]
+
+        if entries:
+            lines.append(f"\nÚltimos {min(len(entries), 10)} trades:")
+            for e in entries[:10]:
+                outcome_emoji = (
+                    "✅" if e["outcome"] == "tp_hit" else
+                    "🔴" if e["outcome"] == "sl_hit" else
+                    "🔵" if e["outcome"] == "open" else "⚪"
+                )
+                pnl_str = f" P&L ${e['pnl_usd']}" if e.get("pnl_usd") is not None else ""
+                lines.append(
+                    f"  {outcome_emoji} {e['symbol']} | conf {e['confidence']}% | "
+                    f"{e['signal']}{pnl_str}"
+                )
+
+        return "\n".join(lines)
