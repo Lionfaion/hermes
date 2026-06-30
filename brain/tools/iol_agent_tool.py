@@ -44,7 +44,8 @@ class IOLAgentStatusTool(BaseTool):
         pp = result.get("paper_portfolio", {})
         regime = result.get("market_regime", {})
         lines = [
-            f"📊 Régimen: crypto={regime.get('crypto')} | arg={regime.get('arg_equities')}",
+            f"📊 Régimen: {regime.get('label')} (longs {'permitidos' if regime.get('allow_long') else 'bloqueados'}, "
+            f"size x{regime.get('size_multiplier')})",
             f"💼 Paper portfolio: {pp.get('open_count', 0)} abiertas | "
             f"win rate {pp.get('win_rate', 0)}% | P&L ${pp.get('total_pnl_usd', 0)}",
         ]
@@ -52,8 +53,8 @@ class IOLAgentStatusTool(BaseTool):
             lines.append("Posiciones abiertas:")
             for p in pp["open_positions"]:
                 lines.append(
-                    f"  • {p['symbol']} {p['side'].upper()} "
-                    f"x{p['quantity']} @ ${p['entry_price']} (entrada: {p['entry_time'][:10]})"
+                    f"  • {p['symbol']} ({p['cluster']}) "
+                    f"${p['position_size_usd']} @ ${p['entry_price']} (entrada: {p['entry_time'][:10]})"
                 )
         return "\n".join(lines)
 
@@ -70,18 +71,14 @@ class IOLCryptoPicksTool(BaseTool):
         result = _request("GET", "/api/agent/crypto-picks")
         if "error" in result:
             return f"[Crypto Picks Error] {result['error']}"
-        picks = result.get("picks", [])
-        if not picks or not result.get("scanner_active"):
-            return (
-                f"⚠️ {result.get('note', 'Scanner inactivo')}\n"
-                "Para activarlo conectá un feed de precios (CoinGecko/Binance) al endpoint."
-            )
-        lines = [f"🚀 Crypto picks ({result.get('timestamp', '')[:10]}):"]
-        for p in picks:
+        candidates = result.get("candidates", [])
+        if not candidates or not result.get("scanner_active"):
+            return "⚠️ Scanner inactivo o sin candidatos en este momento."
+        lines = [f"🚀 Crypto picks ({result.get('updatedAt', '')[:10]}):"]
+        for c in candidates[:10]:
             lines.append(
-                f"  • {p['symbol']} — señal: {p['signal']} "
-                f"| confianza: {p['confidence']}% "
-                f"| 1h: {p.get('change_1h_pct')}% | 24h: {p.get('change_24h_pct')}%"
+                f"  • {c['simbolo']} ({c['cluster']}) — score: {c['totalScore']} "
+                f"| 1h: {c.get('change1h')}% | 24h: {c.get('change24h')}%"
             )
         return "\n".join(lines)
 
@@ -130,11 +127,12 @@ class IOLPaperTradeTool(BaseTool):
                 "enum": ["open", "closed", "all"],
                 "description": "Filtro para 'list'. Por defecto 'open'.",
             },
-            "symbol": {"type": "string", "description": "Par cripto. Ej: BTC/USDT"},
-            "side": {"type": "string", "enum": ["long", "short"]},
+            "symbol": {"type": "string", "description": "Ticker. Ej: SOL"},
+            "nombre": {"type": "string", "description": "Nombre del activo. Ej: Solana"},
+            "cluster": {"type": "string", "enum": ["long_pump", "classic"]},
             "entry_price": {"type": "number", "description": "Precio de entrada en USD"},
-            "quantity": {"type": "number", "description": "Cantidad en activo base (ej. 0.01 BTC)"},
-            "reason": {"type": "string", "description": "Razón / señal que disparó el trade"},
+            "signal_score": {"type": "number", "description": "Score 0-100 del candidato"},
+            "change_24h": {"type": "number", "description": "Cambio 24h en %, usado para sizing"},
             "id": {"type": "string", "description": "ID de la posición (para cerrar)"},
             "exit_price": {"type": "number", "description": "Precio de salida en USD"},
         },
@@ -148,51 +146,52 @@ class IOLPaperTradeTool(BaseTool):
             result = _request("GET", path)
             if "error" in result:
                 return f"[Paper Trade Error] {result['error']}"
-            positions = result.get("positions", [])
-            if not positions:
+            trades = result.get("trades", [])
+            if not trades:
                 return f"No hay posiciones ({status})."
-            lines = [f"📋 Posiciones {status} ({len(positions)}):"]
-            for p in positions:
-                pnl = f" | P&L ${p['pnl_usd']}" if p.get("pnl_usd") is not None else ""
+            lines = [f"📋 Posiciones {status} ({len(trades)}):"]
+            for t in trades:
+                pnl = f" | P&L ${t['pnl']}" if t.get("pnl") is not None else ""
                 lines.append(
-                    f"  • [{p['id'][:8]}] {p['symbol']} {p['side'].upper()} "
-                    f"x{p['quantity']} @ ${p['entry_price']}{pnl} — {p['status']}"
+                    f"  • [{t['id'][:8]}] {t['symbol']} ({t['cluster']}) "
+                    f"${t['positionSizeUSD']} @ ${t['entryPrice']}{pnl} — {t['status']}"
                 )
             return "\n".join(lines)
 
         elif action == "open":
-            for field in ("symbol", "side", "entry_price", "quantity"):
+            for field in ("symbol", "nombre", "cluster", "entry_price", "signal_score", "change_24h"):
                 if field not in kwargs:
                     return f"[Error] Falta el campo requerido: {field}"
             body = {
                 "symbol": kwargs["symbol"],
-                "side": kwargs["side"],
-                "entry_price": kwargs["entry_price"],
-                "quantity": kwargs["quantity"],
-                "reason": kwargs.get("reason"),
+                "nombre": kwargs["nombre"],
+                "cluster": kwargs["cluster"],
+                "entryPrice": kwargs["entry_price"],
+                "signalScore": kwargs["signal_score"],
+                "change24h": kwargs["change_24h"],
             }
             result = _request("POST", "/api/agent/paper-trade", body)
             if "error" in result:
                 return f"[Paper Trade Error] {result['error']}"
-            p = result["position"]
+            t = result["trade"]
             return (
-                f"✅ Posición abierta: {p['symbol']} {p['side'].upper()} "
-                f"x{p['quantity']} @ ${p['entry_price']} (id: {p['id'][:8]})"
+                f"✅ Posición abierta: {t['symbol']} LONG "
+                f"${t['positionSizeUSD']} x{t['leverage']} @ ${t['entryPrice']} (id: {t['id'][:12]})"
             )
 
         elif action == "close":
             for field in ("id", "exit_price"):
                 if field not in kwargs:
                     return f"[Error] Falta el campo requerido: {field}"
-            body = {"id": kwargs["id"], "exit_price": kwargs["exit_price"]}
+            body = {"id": kwargs["id"], "closePrice": kwargs["exit_price"]}
             result = _request("PATCH", "/api/agent/paper-trade", body)
             if "error" in result:
                 return f"[Paper Trade Error] {result['error']}"
-            p = result["position"]
-            emoji = "🟢" if (p.get("pnl_usd") or 0) >= 0 else "🔴"
+            t = result["trade"]
+            emoji = "🟢" if (t.get("pnl") or 0) >= 0 else "🔴"
             return (
-                f"{emoji} Posición cerrada: {p['symbol']} {p['side'].upper()} "
-                f"@ ${p['exit_price']} | P&L: ${p['pnl_usd']} ({p['pnl_pct']}%)"
+                f"{emoji} Posición cerrada: {t['symbol']} "
+                f"@ ${t['closePrice']} | P&L: ${t['pnl']} ({t['pnlPct']}%)"
             )
 
         return f"[Error] Acción desconocida: {action}"
@@ -223,45 +222,27 @@ class IOLLearningTool(BaseTool):
     }
 
     def execute(self, outcome: str = "all", limit: int = 20, **_) -> str:
-        path = "/api/agent/learning"
-        params = []
-        if outcome and outcome != "all":
-            params.append(f"outcome={outcome}")
-        if limit:
-            params.append(f"limit={limit}")
-        if params:
-            path += "?" + "&".join(params)
-
-        result = _request("GET", path)
+        result = _request("GET", "/api/agent/learning")
         if "error" in result:
             return f"[Learning Error] {result['error']}"
 
-        summary = result.get("summary", {})
-        entries = result.get("entries", [])
-        total = result.get("total", 0)
+        scoring = result.get("scoring", {})
+        trading = result.get("trading", {})
 
         lines = [
-            f"📊 <b>Hermes Trading — Aprendizaje</b>",
-            f"Trades totales: {total} | Win rate: {summary.get('win_rate', 0)}%",
-            f"P&L total: ${summary.get('total_pnl_usd', 0)}",
-            f"Promedio ganadores: +${summary.get('avg_pnl_winners_usd', 0)}",
-            f"Promedio perdedores: ${summary.get('avg_pnl_losers_usd', 0)}",
-            f"Mejor señal: {summary.get('best_signal', 'n/a')}",
-            f"Duración promedio ganadores: {summary.get('avg_held_hours_winners', 0)}hs",
+            "📊 <b>Hermes Trading — Aprendizaje</b>",
+            f"Trades cerrados: {trading.get('closedCount', 0)} | "
+            f"Win rate real: {trading.get('winRate', 0)}%",
+            f"P&L total: ${trading.get('totalPnL', 0)} | "
+            f"Profit factor: {trading.get('profitFactor', 0)}",
+            f"Drawdown máx: {trading.get('maxDrawdownPct', 0)}%",
+            "",
+            f"Precisión del scoring (alertas que llegaron a +{scoring.get('hitThresholdPct', 15)}% "
+            f"en {scoring.get('windowDays', 7)}d): {scoring.get('precisionPct', 'n/a')}%",
+            f"Alertas evaluadas: {scoring.get('evaluatedCount', 0)} / {scoring.get('totalAlerts', 0)}",
         ]
 
-        if entries:
-            lines.append(f"\nÚltimos {min(len(entries), 10)} trades:")
-            for e in entries[:10]:
-                outcome_emoji = (
-                    "✅" if e["outcome"] == "tp_hit" else
-                    "🔴" if e["outcome"] == "sl_hit" else
-                    "🔵" if e["outcome"] == "open" else "⚪"
-                )
-                pnl_str = f" P&L ${e['pnl_usd']}" if e.get("pnl_usd") is not None else ""
-                lines.append(
-                    f"  {outcome_emoji} {e['symbol']} | conf {e['confidence']}% | "
-                    f"{e['signal']}{pnl_str}"
-                )
+        for prop in scoring.get("proposals", []):
+            lines.append(f"\n💡 {prop['titulo']}: {prop['detalle']}")
 
         return "\n".join(lines)
