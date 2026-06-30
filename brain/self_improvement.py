@@ -75,7 +75,7 @@ def run_self_improvement() -> str:
     if not conversations:
         return "No hay conversaciones suficientes para analizar todavía."
 
-    from inference_client import chat_google
+    from inference_client import chat
     messages = [
         {"role": "system", "content": _META_COACH_PROMPT},
         {
@@ -84,9 +84,9 @@ def run_self_improvement() -> str:
         },
     ]
 
-    logger.info("Ejecutando auto-mejora con Gemini...")
+    logger.info("Ejecutando auto-mejora...")
     try:
-        result = chat_google(messages)
+        result = chat(messages)
     except Exception as e:
         logger.error("Auto-mejora falló: %s", e)
         return f"Error en auto-mejora: {e}"

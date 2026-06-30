@@ -137,9 +137,6 @@ def _video_chat(messages: list, model: str) -> str:
     """
     if _ollama_online():
         return chat(messages, model)
-    if GOOGLE_AI_API_KEY:
-        from inference_client import chat_google
-        return chat_google(messages)
     if is_groq_available():
         # Último recurso: Groq con truncado para evitar 413/429
         trimmed = []

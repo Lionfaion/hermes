@@ -210,11 +210,13 @@ def run_nightly_learning() -> str:
         return "Sin temas para aprender."
 
     # Fase 2: aprender cada tema en conversación multi-turno
+    import time
     learned = []
     for topic in topics:
         try:
             result = _learn_topic(topic, conversations)
             learned.append(result)
+            time.sleep(5)  # evitar rate limit del free tier (16 req/min)
         except Exception as e:
             logger.error("Error aprendiendo '%s': %s", topic, e)
 
