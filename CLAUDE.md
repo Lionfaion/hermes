@@ -1,21 +1,27 @@
 # Hermes — Contexto del Proyecto para Claude Code
 
-## Estado — Sesión 2026-06-29 (ACTIVO)
+## Estado — Sesión 2026-06-29 (COMPLETADA)
 
-### ✅ Completado hoy (2026-06-29)
+### ✅ Completado (2026-06-29)
 - SSH sin contraseña desde este PC a Lenovo: `ssh lenovo` funciona directo
 - No-sleep con tapa cerrada configurado en Lenovo (powercfg AC+DC)
 - `~/.ssh/config` creado con alias `lenovo → chsan@192.168.0.182`
 - `git pull` en Lenovo: 44 archivos, todo el código nuevo deployado
 - `openai` instalado en Lenovo (necesario para OpenRouter)
-- `.env` Lenovo actualizado con OpenRouter, Z.ai, Groq
-- Bot reiniciado con código nuevo (schtask HermesBotStart)
-- Arquitectura real documentada: bot en Lenovo, Ollama en este PC
+- `.env` Lenovo actualizado: TOOL_CALLING_ENABLED=true, AGENTS_ENABLED=true, sin trailing spaces
+- Bot corriendo en Lenovo (schtask HermesBotStart activo, polling Telegram OK)
+- Arquitectura real documentada: bot en Lenovo, Ollama en este PC (192.168.0.145)
+- Fallback OpenRouter → Z.ai → Ollama funcionando (probado con debate_sintetico)
+- `debate_sintetico.py` completó 5 rondas exitosamente usando Ollama como fallback
+- Notificación Telegram agregada a `debate_sintetico.py`
+- `debate_sintetico.py`: delays de 4s entre turnos para evitar rate limit
+- `inference_client.py`: cascada real con try/except en `chat()` y `chat_with_tools()`
+- Bugs `chat_google` eliminados en `nightly_learning`, `self_improvement`, `video/analyzer`
 
 ### ⏳ Pendiente
-- DHCP reservation en router (MAC `C0-38-96-5E-43-D7` → IP fija `192.168.0.182`)
+- DHCP reservation en router (MAC `C0-38-96-5E-43-D7` → IP fija `192.168.0.182`) — usuario pendiente
 - SadTalker (requiere dependencias pesadas, baja prioridad)
-- Agregar `OPENROUTER_API_KEY` al auto-update script si existe
+- Cargar saldo en Z.ai para tener segundo proveedor cloud operativo
 
 ---
 
@@ -52,11 +58,11 @@ Asistente de IA personal que responde por **Telegram**. Puede:
 
 ### Cadena de inferencia (orden de prioridad)
 ```
-1. OpenRouter → google/gemma-4-31b-it:free   ← primario (funciona)
-2. Z.ai → glm-4.5-air                        ← sin saldo, se saltea
-3. Ollama en ESTE PC → llama3.1:8b           ← fallback local (192.168.0.145)
-4. Google Gemini → gemini-2.5-flash          ← último recurso
+1. OpenRouter → google/gemma-4-31b-it:free   ← primario (gratis, 50 req/día)
+2. Z.ai → glm-4.5-air                        ← sin saldo actualmente
+3. Ollama en ESTE PC → llama3.1:8b           ← fallback local (192.168.0.145:11434)
 ```
+La cascada tiene try/except real: si uno falla, pasa al siguiente automáticamente.
 
 ---
 
@@ -147,7 +153,7 @@ hermes/
 |---|---|---|
 | `TELEGRAM_TOKEN` | Token del bot | ✅ configurado |
 | `TELEGRAM_ALLOWED_USERS` | IDs autorizados | ✅ configurado |
-| `GPU_NODE_HOST` | IP Lenovo (192.168.0.182) | ✅ actualizado |
+| `GPU_NODE_HOST` | IP este PC/GPU node (192.168.0.145) | ✅ configurado en Lenovo |
 | `OPENROUTER_API_KEY` | LLM primario | ✅ configurado |
 | `GOOGLE_AI_API_KEY` | Gemini fallback | ✅ configurado |
 | `ZAI_API_KEY` | Z.ai (sin saldo) | ⚠️ sin saldo |
@@ -186,8 +192,8 @@ hermes/
 
 ## Notas de desarrollo
 
-- **El bot corre en este PC**, no en la Lenovo
-- **Lenovo NO tiene WSL2** — Ollama corre en Windows nativo
+- **El bot corre en la Lenovo** (chsan@192.168.0.182), no en este PC
+- **Ollama corre en ESTE PC** (192.168.0.145:11434), la Lenovo lo accede por red
 - Usuario Windows de la Lenovo: **chsan** (no "cris")
 - Los cron jobs de Linux no aplican — usar **Windows Task Scheduler** en Lenovo
 - SadTalker requiere WSL2 o adaptación a Windows nativo

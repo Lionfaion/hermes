@@ -6,6 +6,7 @@ Guarda resultados en el vault como notas .md y en /memoria/conocimiento_sintetic
 """
 import json
 import logging
+import os
 import random
 import re
 import sys
@@ -13,6 +14,12 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass
 
 from inference_client import chat, is_online
 from config import OLLAMA_MODEL, VAULT_PATH
@@ -184,6 +191,23 @@ def guardar(resultado: dict, transcript: list):
     logger.info("Nota vault: %s", md_path)
 
 
+def _notify_telegram(text: str) -> None:
+    import requests
+    token = os.getenv("TELEGRAM_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        logger.warning("TELEGRAM_TOKEN o TELEGRAM_CHAT_ID no configurados — sin notificación")
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.warning("No pude notificar por Telegram: %s", e)
+
+
 def run():
     logger.info("=== Debate sintético nocturno ===")
 
@@ -196,8 +220,19 @@ def run():
     resultado = juzgar(tema, transcript)
     guardar(resultado, transcript)
 
-    logger.info("Conclusión: %s", resultado.get("conclusion", ""))
+    conclusion = resultado.get("conclusion", "Sin conclusión")
+    conceptos = resultado.get("conceptos_clave_aprendidos", [])
+    conceptos_txt = "\n".join(f"• {c}" for c in conceptos) if conceptos else "• (ninguno)"
+
+    logger.info("Conclusión: %s", conclusion)
     logger.info("=== Debate completado ===")
+
+    _notify_telegram(
+        f"*Debate nocturno completado* 🧠\n\n"
+        f"*Tema:* {tema}\n\n"
+        f"*Conceptos aprendidos:*\n{conceptos_txt}\n\n"
+        f"*Veredicto:* {conclusion}"
+    )
 
 
 if __name__ == "__main__":
