@@ -14,6 +14,14 @@ from config import (
     OPENROUTER_BASE_URL,
     OPENROUTER_MODEL,
     OPENROUTER_TIMEOUT,
+    GROQ_API_KEY,
+    GROQ_BASE_URL,
+    GROQ_MODEL,
+    GROQ_TIMEOUT,
+    GOOGLE_AI_API_KEY,
+    GOOGLE_AI_BASE_URL,
+    GOOGLE_AI_CHAT_MODEL,
+    GOOGLE_AI_TIMEOUT,
     ZAI_API_KEY,
     ZAI_BASE_URL,
     ZAI_MODEL,
@@ -24,6 +32,8 @@ logger = logging.getLogger(__name__)
 _OLLAMA_URL = f"http://{GPU_NODE_HOST}:{GPU_NODE_PORT}"
 
 _USE_OPENROUTER = bool(OPENROUTER_API_KEY)
+_USE_GROQ = bool(GROQ_API_KEY)
+_USE_GOOGLE = bool(GOOGLE_AI_API_KEY)
 _USE_ZAI = bool(ZAI_API_KEY)
 
 
@@ -44,6 +54,16 @@ def _resolve_zai_model(requested: str | None) -> str:
 def _get_openrouter_client():
     from openai import OpenAI
     return OpenAI(api_key=OPENROUTER_API_KEY, base_url=OPENROUTER_BASE_URL)
+
+
+def _get_groq_client():
+    from openai import OpenAI
+    return OpenAI(api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL)
+
+
+def _get_google_client():
+    from openai import OpenAI
+    return OpenAI(api_key=GOOGLE_AI_API_KEY, base_url=GOOGLE_AI_BASE_URL)
 
 
 def _get_openai_client():
@@ -239,6 +259,156 @@ def _zai_chat_stream(messages: list, model: str) -> Generator:
         raise RuntimeError(f"Z.ai stream error: {e}")
 
 
+# ---------------------------------------------------------------------------
+# Groq backend (prioridad 2 — tier gratuito generoso)
+# ---------------------------------------------------------------------------
+
+def _groq_chat(messages: list, model: str, tools: list | None = None) -> dict:
+    from inference_errors import classify_error
+
+    last_error: Exception = RuntimeError("Unknown error")
+
+    for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
+        try:
+            client = _get_groq_client()
+            kwargs = {
+                "model": model,
+                "messages": messages,
+                "timeout": GROQ_TIMEOUT,
+            }
+            if tools:
+                oai_tools = _convert_tools_to_openai(tools)
+                if oai_tools:
+                    kwargs["tools"] = oai_tools
+
+            response = client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+
+            result = {"content": msg.content or ""}
+            if msg.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": json.loads(tc.function.arguments)
+                            if isinstance(tc.function.arguments, str)
+                            else tc.function.arguments,
+                        }
+                    }
+                    for tc in msg.tool_calls
+                ]
+            return result
+
+        except Exception as e:
+            last_error = RuntimeError(f"Groq error: {e}")
+            classified = classify_error(last_error)
+            logger.warning(
+                "Groq attempt %d/%d [%s]: %s -> %s",
+                attempt, INFERENCE_RETRY_ATTEMPTS,
+                classified.category.value,
+                str(last_error)[:100],
+                classified.recovery_action,
+            )
+            if not classified.retryable:
+                break
+            if classified.retry_delay > 0 and attempt < INFERENCE_RETRY_ATTEMPTS:
+                import time
+                time.sleep(min(classified.retry_delay * (2 ** (attempt - 1)), 30))
+
+    raise last_error
+
+
+def _groq_chat_stream(messages: list, model: str) -> Generator:
+    try:
+        client = _get_groq_client()
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            timeout=GROQ_TIMEOUT,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        raise RuntimeError(f"Groq stream error: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Google AI (Gemini) backend — prioridad 3
+# ---------------------------------------------------------------------------
+
+def _google_chat(messages: list, model: str, tools: list | None = None) -> dict:
+    from inference_errors import classify_error
+
+    last_error: Exception = RuntimeError("Unknown error")
+
+    for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
+        try:
+            client = _get_google_client()
+            kwargs = {
+                "model": model,
+                "messages": messages,
+                "timeout": GOOGLE_AI_TIMEOUT,
+            }
+            if tools:
+                oai_tools = _convert_tools_to_openai(tools)
+                if oai_tools:
+                    kwargs["tools"] = oai_tools
+
+            response = client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+
+            result = {"content": msg.content or ""}
+            if msg.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": json.loads(tc.function.arguments)
+                            if isinstance(tc.function.arguments, str)
+                            else tc.function.arguments,
+                        }
+                    }
+                    for tc in msg.tool_calls
+                ]
+            return result
+
+        except Exception as e:
+            last_error = RuntimeError(f"Google AI error: {e}")
+            classified = classify_error(last_error)
+            logger.warning(
+                "Google AI attempt %d/%d [%s]: %s -> %s",
+                attempt, INFERENCE_RETRY_ATTEMPTS,
+                classified.category.value,
+                str(last_error)[:100],
+                classified.recovery_action,
+            )
+            if not classified.retryable:
+                break
+            if classified.retry_delay > 0 and attempt < INFERENCE_RETRY_ATTEMPTS:
+                import time
+                time.sleep(min(classified.retry_delay * (2 ** (attempt - 1)), 30))
+
+    raise last_error
+
+
+def _google_chat_stream(messages: list, model: str) -> Generator:
+    try:
+        client = _get_google_client()
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            timeout=GOOGLE_AI_TIMEOUT,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        raise RuntimeError(f"Google AI stream error: {e}")
+
+
 def _convert_tools_to_openai(ollama_tools: list) -> list:
     """Convert Ollama tool format to OpenAI tool format."""
     oai_tools = []
@@ -311,7 +481,19 @@ def chat(messages: list, model: str | None = None) -> str:
             result = _openrouter_chat(messages, _resolve_openrouter_model(model))
             return result["content"]
         except Exception as e:
-            logger.warning("OpenRouter falló, intentando siguiente proveedor: %s", e)
+            logger.warning("OpenRouter falló, intentando Groq: %s", e)
+    if _USE_GROQ:
+        try:
+            result = _groq_chat(messages, GROQ_MODEL)
+            return result["content"]
+        except Exception as e:
+            logger.warning("Groq falló, intentando Google AI: %s", e)
+    if _USE_GOOGLE:
+        try:
+            result = _google_chat(messages, GOOGLE_AI_CHAT_MODEL)
+            return result["content"]
+        except Exception as e:
+            logger.warning("Google AI falló, intentando Z.ai: %s", e)
     if _USE_ZAI:
         try:
             result = _zai_chat(messages, _resolve_zai_model(model))
@@ -328,7 +510,17 @@ def chat_with_tools(messages: list, tools: list, model: str | None = None) -> di
         try:
             return _openrouter_chat(messages, _resolve_openrouter_model(model), tools=tools)
         except Exception as e:
-            logger.warning("OpenRouter falló en tool call, intentando siguiente: %s", e)
+            logger.warning("OpenRouter falló en tool call, intentando Groq: %s", e)
+    if _USE_GROQ:
+        try:
+            return _groq_chat(messages, GROQ_MODEL, tools=tools)
+        except Exception as e:
+            logger.warning("Groq falló en tool call, intentando Google AI: %s", e)
+    if _USE_GOOGLE:
+        try:
+            return _google_chat(messages, GOOGLE_AI_CHAT_MODEL, tools=tools)
+        except Exception as e:
+            logger.warning("Google AI falló en tool call, intentando Z.ai: %s", e)
     if _USE_ZAI:
         try:
             return _zai_chat(messages, _resolve_zai_model(model), tools=tools)
@@ -374,11 +566,29 @@ def chat_with_images(messages: list, images: list[str], model: str | None = None
 
 def chat_stream(messages: list, model: str | None = None) -> Generator:
     if _USE_OPENROUTER:
-        yield from _openrouter_chat_stream(messages, _resolve_openrouter_model(model))
-        return
+        try:
+            yield from _openrouter_chat_stream(messages, _resolve_openrouter_model(model))
+            return
+        except Exception as e:
+            logger.warning("OpenRouter stream falló, intentando Groq: %s", e)
+    if _USE_GROQ:
+        try:
+            yield from _groq_chat_stream(messages, GROQ_MODEL)
+            return
+        except Exception as e:
+            logger.warning("Groq stream falló, intentando Google AI: %s", e)
+    if _USE_GOOGLE:
+        try:
+            yield from _google_chat_stream(messages, GOOGLE_AI_CHAT_MODEL)
+            return
+        except Exception as e:
+            logger.warning("Google AI stream falló, intentando Z.ai: %s", e)
     if _USE_ZAI:
-        yield from _zai_chat_stream(messages, _resolve_zai_model(model))
-        return
+        try:
+            yield from _zai_chat_stream(messages, _resolve_zai_model(model))
+            return
+        except Exception as e:
+            logger.warning("Z.ai stream falló, intentando Ollama: %s", e)
     try:
         with httpx.Client(timeout=OLLAMA_TIMEOUT) as client:
             with client.stream(

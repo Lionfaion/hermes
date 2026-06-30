@@ -47,10 +47,10 @@ CLASSIFICATION_RULES = [
 
 RECOVERY_ACTIONS = {
     ErrorCategory.RATE_LIMIT: {
-        "retryable": True,
-        "base_delay": 5.0,
-        "action": "wait_and_retry",
-        "description": "Esperar y reintentar con backoff exponencial",
+        "retryable": False,
+        "base_delay": 0,
+        "action": "fallback_provider",
+        "description": "Rate limit alcanzado, caer al siguiente proveedor inmediatamente",
     },
     ErrorCategory.AUTH: {
         "retryable": False,

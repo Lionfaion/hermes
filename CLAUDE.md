@@ -59,10 +59,13 @@ Asistente de IA personal que responde por **Telegram**. Puede:
 ### Cadena de inferencia (orden de prioridad)
 ```
 1. OpenRouter → google/gemma-4-31b-it:free   ← primario (gratis, 50 req/día)
-2. Z.ai → glm-4.5-air                        ← sin saldo actualmente
-3. Ollama en ESTE PC → llama3.1:8b           ← fallback local (192.168.0.145:11434)
+2. Groq → llama-3.3-70b-versatile            ← tier gratuito generoso (~6000 req/día)
+3. Google AI → gemini-2.5-flash              ← tier gratuito generoso (~1500 req/día)
+4. Z.ai → glm-4.5-air                        ← sin saldo actualmente
+5. Ollama en ESTE PC → llama3.1:8b           ← fallback local (192.168.0.145:11434)
 ```
 La cascada tiene try/except real: si uno falla, pasa al siguiente automáticamente.
+Rate limit (429) no reintenta — cae inmediatamente al siguiente proveedor.
 
 ---
 
@@ -154,10 +157,10 @@ hermes/
 | `TELEGRAM_TOKEN` | Token del bot | ✅ configurado |
 | `TELEGRAM_ALLOWED_USERS` | IDs autorizados | ✅ configurado |
 | `GPU_NODE_HOST` | IP este PC/GPU node (192.168.0.145) | ✅ configurado en Lenovo |
-| `OPENROUTER_API_KEY` | LLM primario | ✅ configurado |
+| `OPENROUTER_API_KEY` | LLM primario (50 req/día) | ✅ configurado |
+| `GROQ_API_KEY` | Groq (llama-3.3-70b) prioridad 2 | ✅ configurado |
 | `GOOGLE_AI_API_KEY` | Gemini fallback | ✅ configurado |
-| `ZAI_API_KEY` | Z.ai (sin saldo) | ⚠️ sin saldo |
-| `GROQ_API_KEY` | Groq (llama-3.3-70b) | ✅ configurado |
+| `ZAI_API_KEY` | Z.ai (sin saldo) prioridad 3 | ⚠️ sin saldo |
 | `VISION_MODEL` | obsidian:3b | ⏳ pendiente |
 | `SADTALKER_PATH` | Ruta SadTalker | ⏳ pendiente |
 | `WHISPER_MODEL_SIZE` | small/medium | ⏳ pendiente |

@@ -20,7 +20,13 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/ap
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 OPENROUTER_TIMEOUT = int(os.getenv("OPENROUTER_TIMEOUT", "120"))
 
-# Z.ai / Zhipu AI (GLM models — cloud inference, prioridad 2)
+# Groq — cloud inference, prioridad 2 (tier gratuito generoso)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_TIMEOUT = int(os.getenv("GROQ_TIMEOUT", "60"))
+
+# Z.ai / Zhipu AI (GLM models — cloud inference, prioridad 3)
 ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
 ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4/")
 ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.5-air")
@@ -256,6 +262,8 @@ GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
 GOOGLE_AI_IMAGE_MODEL = os.getenv("GOOGLE_AI_IMAGE_MODEL", "imagen-3.0-generate-002")
 GOOGLE_AI_VIDEO_MODEL = os.getenv("GOOGLE_AI_VIDEO_MODEL", "veo-2.0-generate-001")
 GOOGLE_AI_CHAT_MODEL = os.getenv("GOOGLE_AI_CHAT_MODEL", "gemini-2.5-flash")
+GOOGLE_AI_BASE_URL = os.getenv("GOOGLE_AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+GOOGLE_AI_TIMEOUT = int(os.getenv("GOOGLE_AI_TIMEOUT", "60"))
 
 # HeyGen (avatar videos)
 HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY", "")
