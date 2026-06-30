@@ -1,6 +1,6 @@
 """
 PumpScannerWorker: detecta pumps cripto vía CoinGecko, abre paper trades
-automáticamente y loguea en Obsidian vault para autolearning.
+automáticamente con TP/SL dinámico y loguea en Obsidian vault para autolearning.
 """
 
 import json
@@ -27,6 +27,24 @@ COINGECKO_URL = (
     "&sparkline=false&price_change_percentage=1h%2C24h"
 )
 STATS_PATH = BASE_DIR / "data" / "pump_scanner_stats.json"
+MAX_OPEN_POSITIONS = 10
+
+
+# ── TP/SL Formula ──────────────────────────────────────────────────────────
+
+def _calc_tp_sl(confidence: int, signal: str) -> tuple[float, float]:
+    """Returns (tp_pct, sl_pct) based on confidence score and signal type.
+
+    confidence 60 → TP 20% / SL 12%
+    confidence 100 → TP 35% / SL 8%
+    pump_detected adds 3% to TP.
+    """
+    normalized = max(0.0, (confidence - 60) / 40)
+    tp_pct = 20 + normalized * 15
+    sl_pct = 12 - normalized * 4
+    if signal == "pump_detected":
+        tp_pct += 3
+    return round(tp_pct, 2), round(sl_pct, 2)
 
 
 # ── CoinGecko ──────────────────────────────────────────────────────────────
@@ -73,42 +91,68 @@ def _score_coin(coin: dict) -> dict | None:
     }
 
 
-# ── Paper trade ────────────────────────────────────────────────────────────
+# ── Dashboard API helpers ───────────────────────────────────────────────────
+
+def _dashboard_request(method: str, path: str, body: dict | None = None) -> dict:
+    if not IOL_DASHBOARD_URL or not IOL_AGENT_API_KEY:
+        return {"error": "IOL_DASHBOARD_URL o IOL_AGENT_API_KEY no configurados"}
+    url = f"{IOL_DASHBOARD_URL.rstrip('/')}{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={"x-api-key": IOL_AGENT_API_KEY, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode()}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _check_positions() -> dict:
+    """Call dashboard check-positions to auto-close TP/SL hits."""
+    return _dashboard_request("GET", "/api/agent/check-positions")
+
+
+def _get_open_count() -> int:
+    """Return number of currently open paper positions."""
+    result = _dashboard_request("GET", "/api/agent/paper-trade?status=open")
+    return result.get("count", 0)
+
 
 def _open_paper_trade(coin: dict) -> dict | None:
-    if not IOL_DASHBOARD_URL or not IOL_AGENT_API_KEY:
-        logger.warning("IOL_DASHBOARD_URL o IOL_AGENT_API_KEY no configurados")
-        return None
-
-    qty = round(PUMP_POSITION_SIZE_USD / max(coin["price_usd"], 0.0001), 6)
+    tp_pct, sl_pct = _calc_tp_sl(coin["confidence"], coin["signal"])
     body = {
         "symbol": coin["symbol"],
         "side": "long",
         "entry_price": coin["price_usd"],
-        "quantity": qty,
+        "quantity": round(PUMP_POSITION_SIZE_USD / max(coin["price_usd"], 0.0001), 6),
+        "signal": coin["signal"],
+        "confidence": coin["confidence"],
+        "tp_pct": tp_pct,
+        "sl_pct": sl_pct,
+        "entry_context": {
+            "btc_24h_pct": coin.get("btc_24h_pct", 0),
+            "volume_spike": coin["volume_spike_ratio"],
+            "total_open_at_entry": coin.get("open_count_at_entry", 0),
+        },
         "reason": (
             f"PumpScanner: {coin['signal']} | "
             f"1h={coin['change_1h_pct']}% | "
             f"vol_spike={coin['volume_spike_ratio']} | "
-            f"confidence={coin['confidence']}%"
+            f"confidence={coin['confidence']}% | "
+            f"TP={tp_pct}% SL={sl_pct}%"
         ),
     }
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(
-        f"{IOL_DASHBOARD_URL.rstrip('/')}/api/agent/paper-trade",
-        data=data,
-        method="POST",
-        headers={"x-api-key": IOL_AGENT_API_KEY, "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        logger.error("Error abriendo paper trade: HTTP %s — %s", e.code, e.read().decode())
+    result = _dashboard_request("POST", "/api/agent/paper-trade", body)
+    if "error" in result:
+        logger.error("Error abriendo paper trade: %s", result["error"])
         return None
-    except Exception as e:
-        logger.error("Error abriendo paper trade: %s", e)
-        return None
+    return result
 
 
 # ── Telegram ───────────────────────────────────────────────────────────────
@@ -131,7 +175,7 @@ def _send_telegram(message: str) -> None:
 
 # ── Vault logging ──────────────────────────────────────────────────────────
 
-def _log_to_vault(coin: dict, trade_id: str) -> None:
+def _log_to_vault(coin: dict, trade_id: str, tp_pct: float, sl_pct: float) -> None:
     vault_dir = Path(VAULT_PATH) / "Hermes" / "trades"
     vault_dir.mkdir(parents=True, exist_ok=True)
 
@@ -140,7 +184,6 @@ def _log_to_vault(coin: dict, trade_id: str) -> None:
     filename = f"{date_str}-{symbol_safe}-LONG.md"
     filepath = vault_dir / filename
 
-    # Si ya existe (mismo símbolo, mismo día) no sobrescribir
     if filepath.exists():
         return
 
@@ -152,6 +195,8 @@ def _log_to_vault(coin: dict, trade_id: str) -> None:
         f"entry_price: {coin['price_usd']}\n"
         f"signal: {coin['signal']}\n"
         f"confidence: {coin['confidence']}%\n"
+        f"tp_pct: {tp_pct}%\n"
+        f"sl_pct: {sl_pct}%\n"
         f"change_1h: {coin['change_1h_pct']}%\n"
         f"change_24h: {coin['change_24h_pct']}%\n"
         f"volume_spike_ratio: {coin['volume_spike_ratio']}\n"
@@ -162,13 +207,16 @@ def _log_to_vault(coin: dict, trade_id: str) -> None:
         f"---\n\n"
         f"# Paper Trade: {coin['symbol']} LONG\n\n"
         f"**Señal:** {coin['signal']} | Confianza: {coin['confidence']}%\n\n"
+        f"## Niveles\n"
+        f"- Entrada: ${coin['price_usd']}\n"
+        f"- Take Profit: +{tp_pct}%\n"
+        f"- Stop Loss: -{sl_pct}%\n\n"
         f"## Condiciones de entrada\n"
-        f"- Precio: ${coin['price_usd']}\n"
         f"- Cambio 1h: {coin['change_1h_pct']}%\n"
         f"- Cambio 24h: {coin['change_24h_pct']}%\n"
-        f"- Volume spike ratio: {coin['volume_spike_ratio']} (>0.08 = pump)\n\n"
+        f"- Volume spike ratio: {coin['volume_spike_ratio']}\n\n"
         f"## Resultado\n"
-        f"*(Completar al cerrar: win/loss, precio de salida, lección)*\n"
+        f"*(Completar al cerrar: tp_hit/sl_hit, precio de salida, lección)*\n"
     )
     filepath.write_text(content, encoding="utf-8")
     logger.info("Trade logueado en vault: %s", filepath)
@@ -232,6 +280,30 @@ class PumpScannerWorker:
         stats["total_scans"] += 1
         stats["last_scan"] = datetime.now().isoformat()
 
+        # 1. Auto-close any TP/SL hits before scanning for new entries
+        try:
+            checked = _check_positions()
+            if checked.get("closed"):
+                for c in checked["closed"]:
+                    emoji = "✅" if c["reason"] == "tp_hit" else "🔴"
+                    msg = (
+                        f"{emoji} <b>Auto-close: {c['symbol']}</b>\n"
+                        f"Motivo: {c['reason']} | P&amp;L: ${c['pnl_usd']} ({c['pnl_pct']}%)\n"
+                        f"Duración: {c['held_hours']}hs"
+                    )
+                    _send_telegram(msg)
+        except Exception as e:
+            logger.warning("check-positions falló: %s", e)
+
+        # 2. Check available slots
+        open_count = _get_open_count()
+        available_slots = max(0, MAX_OPEN_POSITIONS - open_count)
+        if available_slots == 0:
+            logger.info("Max positions reached (%d). Skipping new entries.", MAX_OPEN_POSITIONS)
+            _save_stats(stats)
+            return
+
+        # 3. Fetch and score coins
         try:
             coins_raw = _fetch_coingecko()
         except Exception as e:
@@ -239,16 +311,27 @@ class PumpScannerWorker:
             _save_stats(stats)
             return
 
+        # Extract BTC 24h change for entry_context
+        btc_coin = next((c for c in coins_raw if c.get("symbol", "").lower() == "btc"), {})
+        btc_24h_pct = round(btc_coin.get("price_change_percentage_24h_in_currency") or 0.0, 2)
+
         picks = [c for coin in coins_raw if (c := _score_coin(coin)) is not None]
         pumps = [
             p for p in picks
             if p["confidence"] >= PUMP_CONFIDENCE_THRESHOLD
+            and p["signal"] in ("pump_detected", "momentum")
             and p["symbol"] not in self._seen
         ]
+        pumps.sort(key=lambda x: x["confidence"], reverse=True)
 
         stats["pumps_detected"] += len(pumps)
 
-        for coin in pumps[:3]:  # máx 3 por scan para no saturar
+        # 4. Open new positions up to available slots
+        opened_this_cycle: list[tuple[dict, dict]] = []
+        for coin in pumps[:available_slots]:
+            coin["open_count_at_entry"] = open_count
+            coin["btc_24h_pct"] = btc_24h_pct
+
             logger.info(
                 "🚀 Pump: %s confidence=%d%% signal=%s",
                 coin["symbol"], coin["confidence"], coin["signal"]
@@ -260,27 +343,35 @@ class PumpScannerWorker:
 
             trade = result.get("position", {})
             trade_id = trade.get("id", "unknown")
+            tp_pct, sl_pct = _calc_tp_sl(coin["confidence"], coin["signal"])
+
             self._seen.add(coin["symbol"])
             stats["trades_opened"] += 1
+            open_count += 1
 
             sig = coin["signal"]
             stats["by_signal"].setdefault(sig, {"trades": 0, "wins": 0})
             stats["by_signal"][sig]["trades"] += 1
 
-            _log_to_vault(coin, trade_id)
+            _log_to_vault(coin, trade_id, tp_pct, sl_pct)
+            opened_this_cycle.append((coin, trade))
 
-            msg = (
-                f"🚀 <b>Pump detectado: {coin['symbol']}</b>\n"
-                f"Señal: {coin['signal']} | Confianza: {coin['confidence']}%\n"
-                f"1h: {coin['change_1h_pct']}% | 24h: {coin['change_24h_pct']}%\n"
-                f"Volume spike: {coin['volume_spike_ratio']:.3f}\n"
-                f"📋 Paper trade: LONG x{trade.get('quantity', '?')} @ ${coin['price_usd']}\n"
-                f"ID: <code>{trade_id[:8]}</code>"
-            )
-            _send_telegram(msg)
+        # 5. Send single Telegram summary if new positions opened
+        if opened_this_cycle:
+            lines = [f"🤖 <b>Hermes Trading — {datetime.now().strftime('%H:%M')}hs</b>"]
+            lines.append(f"📈 Nuevas posiciones: {len(opened_this_cycle)}")
+            for coin, _ in opened_this_cycle:
+                tp_pct, sl_pct = _calc_tp_sl(coin["confidence"], coin["signal"])
+                lines.append(
+                    f"  • {coin['symbol']} LONG ${PUMP_POSITION_SIZE_USD} "
+                    f"(conf {coin['confidence']}%) → TP +{tp_pct}% / SL -{sl_pct}%"
+                )
+            total_open = _get_open_count()
+            lines.append(f"Portfolio: {total_open} abiertas de {MAX_OPEN_POSITIONS} máx")
+            _send_telegram("\n".join(lines))
 
         _save_stats(stats)
         logger.info(
-            "Scan completo: %d coins analizadas, %d picks, %d pumps nuevos",
+            "Scan completo: %d coins, %d picks, %d pumps nuevos",
             len(coins_raw), len(picks), len(pumps),
         )
