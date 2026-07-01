@@ -111,7 +111,7 @@ class IOLPaperTradeTool(BaseTool):
         "Gestiona posiciones de paper trading cripto (simuladas, sin dinero real). "
         "Acciones disponibles:\n"
         "  - list: lista posiciones (status='open'|'closed'|'all')\n"
-        "  - open: abre posición (symbol, side='long'|'short', entry_price, quantity, reason)\n"
+        "  - open: abre posición (symbol, nombre, cluster='long_pump'|'classic', entry_price, signal_score, change_24h)\n"
         "  - close: cierra posición (id, exit_price)"
     )
     parameters = {
