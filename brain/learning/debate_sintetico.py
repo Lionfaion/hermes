@@ -118,9 +118,15 @@ def _tema_de_trade_reciente() -> str | None:
         return None
 
 
-def seleccionar_tema() -> str:
+def seleccionar_tema(forzar_cripto: bool = False) -> str:
     """Prioriza pumps/cripto/proyectos: 35% un trade real reciente si existe,
-    35% un tema curado de TEMAS_CRIPTO, 25% un tema general, 5% palabras del vault."""
+    35% un tema curado de TEMAS_CRIPTO, 25% un tema general, 5% palabras del vault.
+    Si forzar_cripto=True, ignora el sorteo y siempre elige cripto (trade real si hay,
+    si no un tema curado de TEMAS_CRIPTO)."""
+    if forzar_cripto:
+        tema_real = _tema_de_trade_reciente()
+        return tema_real if tema_real else random.choice(TEMAS_CRIPTO)
+
     roll = random.random()
 
     if roll < 0.35:
@@ -264,14 +270,10 @@ def _notify_telegram(text: str) -> None:
         logger.warning("No pude notificar por Telegram: %s", e)
 
 
-def run():
-    logger.info("=== Debate sintético nocturno ===")
+def _ejecutar_una_conversacion(numero: int, total: int, forzar_cripto: bool) -> None:
+    tema = seleccionar_tema(forzar_cripto=forzar_cripto)
+    logger.info("--- Conversación %d/%d — Tema: %s", numero, total, tema)
 
-    if not is_online():
-        logger.error("GPU node offline. Cancelando debate.")
-        return
-
-    tema = seleccionar_tema()
     transcript = run_debate(tema)
     resultado = juzgar(tema, transcript)
     guardar(resultado, transcript)
@@ -280,15 +282,39 @@ def run():
     conceptos = resultado.get("conceptos_clave_aprendidos", [])
     conceptos_txt = "\n".join(f"• {c}" for c in conceptos) if conceptos else "• (ninguno)"
 
-    logger.info("Conclusión: %s", conclusion)
-    logger.info("=== Debate completado ===")
+    logger.info("Conclusión %d/%d: %s", numero, total, conclusion)
 
     _notify_telegram(
-        f"*Debate nocturno completado* 🧠\n\n"
+        f"*Debate nocturno {numero}/{total} completado* 🧠\n\n"
         f"*Tema:* {tema}\n\n"
         f"*Conceptos aprendidos:*\n{conceptos_txt}\n\n"
         f"*Veredicto:* {conclusion}"
     )
+
+
+def run(cantidad: int = 3):
+    """Corre `cantidad` conversaciones sintéticas en una sola ejecución nocturna.
+    La primera siempre es sobre pumps/cripto/trades reales (forzado); el resto usa
+    la selección de tema normal (que ya favorece cripto, pero es libre)."""
+    import time
+
+    logger.info("=== Debates sintéticos nocturnos (%d) ===", cantidad)
+
+    if not is_online():
+        logger.error("GPU node offline. Cancelando debates.")
+        return
+
+    for i in range(1, cantidad + 1):
+        forzar_cripto = (i == 1)
+        try:
+            _ejecutar_una_conversacion(i, cantidad, forzar_cripto)
+        except Exception as e:
+            logger.error("Conversación %d/%d falló: %s", i, cantidad, e)
+
+        if i < cantidad:
+            time.sleep(60)  # pausa entre conversaciones para no saturar el proveedor cloud
+
+    logger.info("=== Debates sintéticos completados (%d) ===", cantidad)
 
 
 if __name__ == "__main__":
