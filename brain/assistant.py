@@ -478,7 +478,14 @@ class HermesAssistant:
 
     def _tool_call_loop(self, messages: list) -> str:
         """Loop de tool calling con budget inteligente y clasificación de errores."""
-        schemas = self.registry.get_schemas()
+        from tools.router import select_relevant_schemas
+
+        all_schemas = self.registry.get_schemas()
+        last_user_msg = next(
+            (m.get("content", "") for m in reversed(messages) if m.get("role") == "user"),
+            "",
+        )
+        schemas = select_relevant_schemas(last_user_msg, all_schemas)
 
         try:
             from agents.budget import get_budget_manager
