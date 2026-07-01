@@ -22,10 +22,15 @@ from config import (
     GOOGLE_AI_BASE_URL,
     GOOGLE_AI_CHAT_MODEL,
     GOOGLE_AI_TIMEOUT,
-    ZAI_API_KEY,
-    ZAI_BASE_URL,
-    ZAI_MODEL,
-    ZAI_TIMEOUT,
+    ANTHROPIC_API_KEY,
+    ANTHROPIC_BASE_URL,
+    ANTHROPIC_MODEL,
+    ANTHROPIC_TIMEOUT,
+    ANTHROPIC_MAX_TOKENS,
+    OPENAI_API_KEY,
+    OPENAI_BASE_URL,
+    OPENAI_MODEL,
+    OPENAI_TIMEOUT,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,7 +39,8 @@ _OLLAMA_URL = f"http://{GPU_NODE_HOST}:{GPU_NODE_PORT}"
 _USE_OPENROUTER = bool(OPENROUTER_API_KEY)
 _USE_GROQ = bool(GROQ_API_KEY)
 _USE_GOOGLE = bool(GOOGLE_AI_API_KEY)
-_USE_ZAI = bool(ZAI_API_KEY)
+_USE_ANTHROPIC = bool(ANTHROPIC_API_KEY)
+_USE_OPENAI = bool(OPENAI_API_KEY)
 
 
 def _resolve_openrouter_model(requested: str | None) -> str:
@@ -42,13 +48,6 @@ def _resolve_openrouter_model(requested: str | None) -> str:
     if requested and "/" in requested:
         return requested  # ya es un model ID de OpenRouter
     return OPENROUTER_MODEL
-
-
-def _resolve_zai_model(requested: str | None) -> str:
-    """Map model param to Z.ai model. Ollama names get replaced with ZAI_MODEL."""
-    if requested and requested.startswith("glm"):
-        return requested
-    return ZAI_MODEL
 
 
 def _get_openrouter_client():
@@ -66,21 +65,19 @@ def _get_google_client():
     return OpenAI(api_key=GOOGLE_AI_API_KEY, base_url=GOOGLE_AI_BASE_URL)
 
 
+def _get_anthropic_client():
+    from openai import OpenAI
+    return OpenAI(api_key=ANTHROPIC_API_KEY, base_url=ANTHROPIC_BASE_URL)
+
+
 def _get_openai_client():
     from openai import OpenAI
-    return OpenAI(api_key=ZAI_API_KEY, base_url=ZAI_BASE_URL)
+    return OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 
 def is_online() -> bool:
     if _USE_OPENROUTER:
         return True  # OpenRouter es siempre online
-    if _USE_ZAI:
-        try:
-            client = _get_openai_client()
-            client.models.list()
-            return True
-        except Exception:
-            return False
     try:
         r = httpx.get(f"{_OLLAMA_URL}/api/tags", timeout=3.0)
         return r.status_code == 200
@@ -89,14 +86,6 @@ def is_online() -> bool:
 
 
 def list_models() -> list:
-    if _USE_ZAI:
-        try:
-            client = _get_openai_client()
-            models = client.models.list()
-            return [m.id for m in models.data]
-        except Exception as e:
-            logger.warning("Could not list Z.ai models: %s", e)
-            return []
     try:
         r = httpx.get(f"{_OLLAMA_URL}/api/tags", timeout=5.0)
         r.raise_for_status()
@@ -181,84 +170,6 @@ def _openrouter_chat_stream(messages: list, model: str) -> Generator:
                 yield chunk.choices[0].delta.content
     except Exception as e:
         raise RuntimeError(f"OpenRouter stream error: {e}")
-
-
-# ---------------------------------------------------------------------------
-# Z.ai (OpenAI-compatible) backend
-# ---------------------------------------------------------------------------
-
-def _zai_chat(messages: list, model: str, tools: list | None = None, stream: bool = False) -> dict:
-    from inference_errors import classify_error
-
-    last_error: Exception = RuntimeError("Unknown error")
-    messages = _to_openai_messages(messages)
-
-    for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
-        try:
-            client = _get_openai_client()
-            kwargs = {
-                "model": model,
-                "messages": messages,
-                "stream": stream,
-                "timeout": ZAI_TIMEOUT,
-            }
-            if tools:
-                oai_tools = _convert_tools_to_openai(tools)
-                if oai_tools:
-                    kwargs["tools"] = oai_tools
-
-            response = client.chat.completions.create(**kwargs)
-            msg = response.choices[0].message
-
-            result = {"content": msg.content or ""}
-            if msg.tool_calls:
-                result["tool_calls"] = [
-                    {
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": json.loads(tc.function.arguments)
-                            if isinstance(tc.function.arguments, str)
-                            else tc.function.arguments,
-                        }
-                    }
-                    for tc in msg.tool_calls
-                ]
-            return result
-
-        except Exception as e:
-            last_error = RuntimeError(f"Z.ai error: {e}")
-            classified = classify_error(last_error)
-            logger.warning(
-                "Z.ai attempt %d/%d [%s]: %s -> %s",
-                attempt, INFERENCE_RETRY_ATTEMPTS,
-                classified.category.value,
-                str(last_error)[:100],
-                classified.recovery_action,
-            )
-            if not classified.retryable:
-                break
-            if classified.retry_delay > 0 and attempt < INFERENCE_RETRY_ATTEMPTS:
-                import time
-                delay = classified.retry_delay * (2 ** (attempt - 1))
-                time.sleep(min(delay, 30))
-
-    raise last_error
-
-
-def _zai_chat_stream(messages: list, model: str) -> Generator:
-    try:
-        client = _get_openai_client()
-        stream = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-            timeout=ZAI_TIMEOUT,
-        )
-        for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
-    except Exception as e:
-        raise RuntimeError(f"Z.ai stream error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +324,162 @@ def _google_chat_stream(messages: list, model: str) -> Generator:
         raise RuntimeError(f"Google AI stream error: {e}")
 
 
+# ---------------------------------------------------------------------------
+# Anthropic (Claude, via OpenAI SDK compatibility) backend — prioridad 4
+# ---------------------------------------------------------------------------
+
+def _anthropic_chat(messages: list, model: str, tools: list | None = None, stream: bool = False) -> dict:
+    from inference_errors import classify_error
+
+    last_error: Exception = RuntimeError("Unknown error")
+    messages = _to_openai_messages(messages)
+
+    for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
+        try:
+            client = _get_anthropic_client()
+            kwargs = {
+                "model": model,
+                "messages": messages,
+                "stream": stream,
+                "timeout": ANTHROPIC_TIMEOUT,
+                "max_tokens": ANTHROPIC_MAX_TOKENS,
+            }
+            if tools:
+                oai_tools = _convert_tools_to_openai(tools)
+                if oai_tools:
+                    kwargs["tools"] = oai_tools
+
+            response = client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+
+            result = {"content": msg.content or ""}
+            if msg.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": json.loads(tc.function.arguments)
+                            if isinstance(tc.function.arguments, str)
+                            else tc.function.arguments,
+                        }
+                    }
+                    for tc in msg.tool_calls
+                ]
+            return result
+
+        except Exception as e:
+            last_error = RuntimeError(f"Claude error: {e}")
+            classified = classify_error(last_error)
+            logger.warning(
+                "Claude attempt %d/%d [%s]: %s -> %s",
+                attempt, INFERENCE_RETRY_ATTEMPTS,
+                classified.category.value,
+                str(last_error)[:100],
+                classified.recovery_action,
+            )
+            if not classified.retryable:
+                break
+            if classified.retry_delay > 0 and attempt < INFERENCE_RETRY_ATTEMPTS:
+                import time
+                time.sleep(min(classified.retry_delay * (2 ** (attempt - 1)), 30))
+
+    raise last_error
+
+
+def _anthropic_chat_stream(messages: list, model: str) -> Generator:
+    try:
+        client = _get_anthropic_client()
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            timeout=ANTHROPIC_TIMEOUT,
+            max_tokens=ANTHROPIC_MAX_TOKENS,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        raise RuntimeError(f"Claude stream error: {e}")
+
+
+# ---------------------------------------------------------------------------
+# OpenAI (ChatGPT) backend — prioridad 5
+# ---------------------------------------------------------------------------
+
+def _openai_chat(messages: list, model: str, tools: list | None = None, stream: bool = False) -> dict:
+    from inference_errors import classify_error
+
+    last_error: Exception = RuntimeError("Unknown error")
+    messages = _to_openai_messages(messages)
+
+    for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
+        try:
+            client = _get_openai_client()
+            kwargs = {
+                "model": model,
+                "messages": messages,
+                "stream": stream,
+                "timeout": OPENAI_TIMEOUT,
+            }
+            if tools:
+                oai_tools = _convert_tools_to_openai(tools)
+                if oai_tools:
+                    kwargs["tools"] = oai_tools
+
+            response = client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+
+            result = {"content": msg.content or ""}
+            if msg.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": json.loads(tc.function.arguments)
+                            if isinstance(tc.function.arguments, str)
+                            else tc.function.arguments,
+                        }
+                    }
+                    for tc in msg.tool_calls
+                ]
+            return result
+
+        except Exception as e:
+            last_error = RuntimeError(f"ChatGPT error: {e}")
+            classified = classify_error(last_error)
+            logger.warning(
+                "ChatGPT attempt %d/%d [%s]: %s -> %s",
+                attempt, INFERENCE_RETRY_ATTEMPTS,
+                classified.category.value,
+                str(last_error)[:100],
+                classified.recovery_action,
+            )
+            if not classified.retryable:
+                break
+            if classified.retry_delay > 0 and attempt < INFERENCE_RETRY_ATTEMPTS:
+                import time
+                time.sleep(min(classified.retry_delay * (2 ** (attempt - 1)), 30))
+
+    raise last_error
+
+
+def _openai_chat_stream(messages: list, model: str) -> Generator:
+    try:
+        client = _get_openai_client()
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            timeout=OPENAI_TIMEOUT,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        raise RuntimeError(f"ChatGPT stream error: {e}")
+
+
 def _to_openai_messages(messages: list) -> list:
     """OpenAI-compatible providers require tool_calls[].function.arguments as a
     JSON string. Our conversation history stores it as a dict (assistant.py /
@@ -520,13 +587,19 @@ def chat(messages: list, model: str | None = None) -> str:
             result = _google_chat(messages, GOOGLE_AI_CHAT_MODEL)
             return result["content"]
         except Exception as e:
-            logger.warning("Google AI falló, intentando Z.ai: %s", e)
-    if _USE_ZAI:
+            logger.warning("Google AI falló, intentando Claude: %s", e)
+    if _USE_ANTHROPIC:
         try:
-            result = _zai_chat(messages, _resolve_zai_model(model))
+            result = _anthropic_chat(messages, ANTHROPIC_MODEL)
             return result["content"]
         except Exception as e:
-            logger.warning("Z.ai falló, intentando Ollama: %s", e)
+            logger.warning("Claude falló, intentando ChatGPT: %s", e)
+    if _USE_OPENAI:
+        try:
+            result = _openai_chat(messages, OPENAI_MODEL)
+            return result["content"]
+        except Exception as e:
+            logger.warning("ChatGPT falló, intentando Ollama: %s", e)
     data = _post_chat({"model": model or OLLAMA_MODEL, "messages": messages, "stream": False})
     return data["message"]["content"]
 
@@ -547,12 +620,17 @@ def chat_with_tools(messages: list, tools: list, model: str | None = None) -> di
         try:
             return _google_chat(messages, GOOGLE_AI_CHAT_MODEL, tools=tools)
         except Exception as e:
-            logger.warning("Google AI falló en tool call, intentando Z.ai: %s", e)
-    if _USE_ZAI:
+            logger.warning("Google AI falló en tool call, intentando Claude: %s", e)
+    if _USE_ANTHROPIC:
         try:
-            return _zai_chat(messages, _resolve_zai_model(model), tools=tools)
+            return _anthropic_chat(messages, ANTHROPIC_MODEL, tools=tools)
         except Exception as e:
-            logger.warning("Z.ai falló en tool call, intentando Ollama: %s", e)
+            logger.warning("Claude falló en tool call, intentando ChatGPT: %s", e)
+    if _USE_OPENAI:
+        try:
+            return _openai_chat(messages, OPENAI_MODEL, tools=tools)
+        except Exception as e:
+            logger.warning("ChatGPT falló en tool call, intentando Ollama: %s", e)
     payload = {"model": model or OLLAMA_MODEL, "messages": messages, "stream": False}
     if tools:
         payload["tools"] = tools
@@ -562,8 +640,8 @@ def chat_with_tools(messages: list, tools: list, model: str | None = None) -> di
 
 def chat_with_images(messages: list, images: list[str], model: str | None = None) -> str:
     """Chat con imágenes (base64). Para modelos de visión como LLaVA."""
-    # OpenRouter y Z.ai usan el mismo formato de imagen
-    if _USE_OPENROUTER or _USE_ZAI:
+    # OpenRouter, Claude y ChatGPT usan el mismo formato de imagen (image_url)
+    if _USE_OPENROUTER or _USE_ANTHROPIC or _USE_OPENAI:
         src_messages = []
         for msg in messages:
             src_messages.append(dict(msg))
@@ -578,8 +656,10 @@ def chat_with_images(messages: list, images: list[str], model: str | None = None
             last["content"] = content_parts
         if _USE_OPENROUTER:
             result = _openrouter_chat(src_messages, _resolve_openrouter_model(model))
+        elif _USE_ANTHROPIC:
+            result = _anthropic_chat(src_messages, ANTHROPIC_MODEL)
         else:
-            result = _zai_chat(src_messages, _resolve_zai_model(model))
+            result = _openai_chat(src_messages, OPENAI_MODEL)
         return result["content"]
 
     if messages and images:
@@ -609,13 +689,19 @@ def chat_stream(messages: list, model: str | None = None) -> Generator:
             yield from _google_chat_stream(messages, GOOGLE_AI_CHAT_MODEL)
             return
         except Exception as e:
-            logger.warning("Google AI stream falló, intentando Z.ai: %s", e)
-    if _USE_ZAI:
+            logger.warning("Google AI stream falló, intentando Claude: %s", e)
+    if _USE_ANTHROPIC:
         try:
-            yield from _zai_chat_stream(messages, _resolve_zai_model(model))
+            yield from _anthropic_chat_stream(messages, ANTHROPIC_MODEL)
             return
         except Exception as e:
-            logger.warning("Z.ai stream falló, intentando Ollama: %s", e)
+            logger.warning("Claude stream falló, intentando ChatGPT: %s", e)
+    if _USE_OPENAI:
+        try:
+            yield from _openai_chat_stream(messages, OPENAI_MODEL)
+            return
+        except Exception as e:
+            logger.warning("ChatGPT stream falló, intentando Ollama: %s", e)
     try:
         with httpx.Client(timeout=OLLAMA_TIMEOUT) as client:
             with client.stream(

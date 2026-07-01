@@ -5,7 +5,7 @@ Regression test for the tool-calling history corruption bug.
 Root cause: inference_client.py parsed `tool_calls[].function.arguments`
 into a dict before returning it. assistant.py / base_agent.py then stored
 that dict straight into the conversation history. On any fallback
-provider after OpenRouter (Groq, Google AI, Z.ai), the OpenAI-compatible
+provider after OpenRouter (Groq, Google AI, Claude, ChatGPT), the OpenAI-compatible
 API rejects the whole request because `arguments` must be a JSON string,
 not an object -> every cloud fallback broke, leaving only Ollama (which
 tolerates dicts) able to answer, ~2-3min later.

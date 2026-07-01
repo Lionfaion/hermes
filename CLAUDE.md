@@ -90,9 +90,11 @@ Asistente de IA personal que responde por **Telegram**. Puede:
 1. OpenRouter → google/gemma-4-31b-it:free   ← primario (gratis, 50 req/día)
 2. Groq → llama-3.3-70b-versatile            ← tier gratuito generoso (~6000 req/día)
 3. Google AI → gemini-2.5-flash              ← tier gratuito generoso (~1500 req/día)
-4. Z.ai → glm-4.5-air                        ← sin saldo actualmente
-5. Ollama en ESTE PC → llama3.1:8b           ← fallback local (192.168.0.145:11434)
+4. Claude (Anthropic) → claude-haiku-4-5     ← pago, vía OpenAI SDK compat (api.anthropic.com/v1)
+5. ChatGPT (OpenAI) → gpt-4o-mini            ← pago
+6. Ollama en ESTE PC → llama3.1:8b           ← fallback local (192.168.0.145:11434)
 ```
+Z.ai fue removido de la cascada (2026-07-01, sin saldo y no se le va a cargar).
 La cascada tiene try/except real: si uno falla, pasa al siguiente automáticamente.
 Rate limit (429) no reintenta — cae inmediatamente al siguiente proveedor.
 

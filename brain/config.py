@@ -26,11 +26,18 @@ GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_TIMEOUT = int(os.getenv("GROQ_TIMEOUT", "60"))
 
-# Z.ai / Zhipu AI (GLM models — cloud inference, prioridad 3)
-ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
-ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4/")
-ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.5-air")
-ZAI_TIMEOUT = int(os.getenv("ZAI_TIMEOUT", "120"))
+# Anthropic (Claude) — cloud inference, prioridad 4 (pago, fallback tras las gratuitas)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1/")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+ANTHROPIC_TIMEOUT = int(os.getenv("ANTHROPIC_TIMEOUT", "60"))
+ANTHROPIC_MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096"))
+
+# OpenAI (ChatGPT) — cloud inference, prioridad 5 (pago, fallback tras las gratuitas)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_TIMEOUT = int(os.getenv("OPENAI_TIMEOUT", "60"))
 
 # Assistant identity
 ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "Hermes")
