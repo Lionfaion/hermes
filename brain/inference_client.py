@@ -114,6 +114,7 @@ def _openrouter_chat(messages: list, model: str, tools: list | None = None, stre
     from inference_errors import classify_error
 
     last_error: Exception = RuntimeError("Unknown error")
+    messages = _to_openai_messages(messages)
 
     for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
         try:
@@ -190,6 +191,7 @@ def _zai_chat(messages: list, model: str, tools: list | None = None, stream: boo
     from inference_errors import classify_error
 
     last_error: Exception = RuntimeError("Unknown error")
+    messages = _to_openai_messages(messages)
 
     for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
         try:
@@ -267,6 +269,7 @@ def _groq_chat(messages: list, model: str, tools: list | None = None) -> dict:
     from inference_errors import classify_error
 
     last_error: Exception = RuntimeError("Unknown error")
+    messages = _to_openai_messages(messages)
 
     for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
         try:
@@ -342,6 +345,7 @@ def _google_chat(messages: list, model: str, tools: list | None = None) -> dict:
     from inference_errors import classify_error
 
     last_error: Exception = RuntimeError("Unknown error")
+    messages = _to_openai_messages(messages)
 
     for attempt in range(1, INFERENCE_RETRY_ATTEMPTS + 1):
         try:
@@ -407,6 +411,29 @@ def _google_chat_stream(messages: list, model: str) -> Generator:
                 yield chunk.choices[0].delta.content
     except Exception as e:
         raise RuntimeError(f"Google AI stream error: {e}")
+
+
+def _to_openai_messages(messages: list) -> list:
+    """OpenAI-compatible providers require tool_calls[].function.arguments as a
+    JSON string. Our conversation history stores it as a dict (assistant.py /
+    base_agent.py need the dict to execute tools locally), so serialize a copy
+    right at the HTTP boundary instead of mutating the caller's history."""
+    result = []
+    for msg in messages:
+        tool_calls = msg.get("tool_calls") if isinstance(msg, dict) else None
+        if not tool_calls:
+            result.append(msg)
+            continue
+        new_calls = []
+        for tc in tool_calls:
+            func = tc.get("function", {})
+            args = func.get("arguments")
+            if isinstance(args, str):
+                new_calls.append(tc)
+            else:
+                new_calls.append({**tc, "function": {**func, "arguments": json.dumps(args)}})
+        result.append({**msg, "tool_calls": new_calls})
+    return result
 
 
 def _convert_tools_to_openai(ollama_tools: list) -> list:
