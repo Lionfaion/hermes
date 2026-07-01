@@ -1,5 +1,30 @@
 # Hermes — Contexto del Proyecto para Claude Code
 
+## Estado — Sesión 2026-06-30/07-01 (COMPLETADA)
+
+### ✅ Unificación del sistema de pump trading
+Hermes tenía su propio scoring/sizing simplificado para operar pumps de altcoins (paper trading). Se unificó con el motor real que ya usaba el dashboard (`iol-inversiones-dashboard`) para sus propias operaciones: Kelly criterion sizing, risk engine (límites de drawdown/exposición), thesis con IA, aprendizaje real por win-rate. Ahora hay un solo capital, un solo store (Upstash Redis), una sola estrategia — se ejecutó vía plan detallado en `iol-inversiones-dashboard/docs/superpowers/plans/2026-06-30-unify-pump-strategy.md` (13 tareas, subagent-driven-development, con revisión de código en cada una + revisión final de todo el branch).
+
+- `brain/background/pump_scanner.py` reescrito: ya no calcula su propio score/TP/SL, pide candidatos ya puntuados a `/api/agent/crypto-picks` y deja que el dashboard calcule sizing/riesgo en `/api/agent/paper-trade`.
+- `brain/tools/iol_agent_tool.py` actualizado a los nuevos contratos de respuesta.
+- Bug real encontrado y arreglado en la revisión final: `paper-trade` podía devolver un "trade" fantasma sin persistir ni control de riesgo si Upstash estaba caído — ahora falla con 503 en vez de silencio.
+- **Régimen de mercado de BTC ya no bloquea la apertura de longs** (2026-07-01, pedido explícito del usuario: "los pumps de altcoin reaccionan diferente"). `regime.sizeMultiplier` sigue reduciendo el tamaño en mercados adversos, pero ya no impide operar.
+
+### ✅ Hermes ya no manda mensajes proactivos de trading
+Antes avisaba por Telegram cada vez que abría/cerraba una posición. Ahora **solo informa cuando se le pregunta** (`iol_status`, `iol_learning`, `iol_crypto_picks`, `iol_paper_trade`). Los cierres automáticos (TP/SL) actualizan la nota del vault (`status`/`outcome`/`pnl_pct`) en vez de notificar.
+
+### ✅ Debate sintético nocturno: 3 conversaciones, no 1
+`brain/learning/debate_sintetico.py` corre `run(cantidad=3)` en la tarea `HermesDebateSintetico` (3:30am). La conversación 1 siempre analiza un trade real reciente (o un tema cripto curado si no hay trades) — forzado. Las conversaciones 2 y 3 usan selección libre (ya sesgada ~70% a pumps/cripto/proyectos, con `TEMAS_CRIPTO` agregado). Pausa de 60s entre conversaciones.
+
+### ✅ Infraestructura Upstash
+Conectado Upstash for Redis vía el Storage tab de Vercel al proyecto `iol-inversiones-dashboard` (plan free). Variables `UPSTASH_REDIS_REST_URL`/`TOKEN` cargadas en `.env.local` local y en Vercel producción.
+
+### ⏳ Pendiente de esta sesión
+- Calibrar `PUMP_CONFIDENCE_THRESHOLD` en Lenovo `.env` contra la nueva escala de `totalScore` (antes comparaba contra una escala de confianza distinta) — verificar con un scan real cuántos candidatos abren en la práctica.
+- Hallazgos menores documentados en el plan (deuda técnica, no bloqueantes): convención de nombres inconsistente entre rutas `/api/agent/*` (snake_case vs camelCase), colisión de nombre de archivo de vault si el mismo símbolo opera dos veces el mismo día tras un restart, `_get_open_count()` interpreta error de API como "0 abiertas".
+
+---
+
 ## Estado — Sesión 2026-06-29 (COMPLETADA)
 
 ### ✅ Completado (2026-06-29)
@@ -47,6 +72,10 @@ Asistente de IA personal que responde por **Telegram**. Puede:
                                                Vault: C:\Users\chsan\hermes-vault
                                                schtask: HermesBotStart
                                                schtask: HermesNightlyLearning (3am)
+                                               schtask: HermesDebateSintetico (3:30am, 3 conversaciones)
+                                               schtask: HermesReflexionDiaria (3am)
+                                               schtask: HermesIndexarVault (8am)
+                                               schtask: HermesGitPush
 ```
 
 ### Deploy flow
@@ -179,6 +208,19 @@ hermes/
 | `/tools` | Lista herramientas cargadas |
 | `/logs` | Ver logs recientes |
 | `/clear` | Borrar historial de conversación |
+
+---
+
+## Herramientas de trading (Telegram, `usa <tool>`)
+
+| Tool | Descripción |
+|---|---|
+| `iol_status` | Régimen de mercado + posiciones abiertas |
+| `iol_crypto_picks` | Candidatos de pump actuales (scoring real del dashboard) |
+| `iol_paper_trade` | list / open / close manual de posiciones |
+| `iol_learning` | Win rate real + precisión del scoring + P&L |
+
+Hermes **no notifica solo** cuando abre/cierra trades — solo responde a estos comandos. El scanner autónomo (`pump_scanner.py`) opera en background cada `PUMP_SCAN_INTERVAL` segundos sin avisar nada por Telegram.
 
 ---
 
