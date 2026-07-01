@@ -42,15 +42,25 @@ TEMAS = [
     "Cómo evaluar la calidad de modelos LLM locales sin benchmarks externos",
     "Prompt engineering avanzado: técnicas que realmente marcan diferencia",
     "Arquitecturas de memoria para agentes de IA con contexto largo",
-    # Trading
-    "Análisis técnico vs análisis fundamental: qué predice mejor el corto plazo",
-    "Gestión de riesgo en trading algorítmico: reglas que los profesionales usan",
-    "Indicadores técnicos realmente útiles vs los que generan ruido",
-    "Backtesting: errores comunes que invalidan los resultados",
-    "Estrategias de scalping vs swing trading: ventajas y desventajas reales",
     # Diseño & Creatividad
     "Principios de diseño minimalista aplicados a interfaces de usuario",
     "Cómo la psicología del color afecta las decisiones en diseño de interiores",
+]
+
+# ── Temas de cripto / pump trading / evaluación de proyectos (peso alto) ──────
+TEMAS_CRIPTO = [
+    "Cómo distinguir un pump real (con fundamento) de un pump-and-dump diseñado para atrapar compradores tardíos",
+    "Qué métricas on-chain (holders, liquidez, distribución de supply) predicen mejor la sostenibilidad de un rally",
+    "Tokenomics: red flags en la distribución de supply y vesting que anticipan un dump",
+    "Cómo evaluar el equipo y la narrativa de un proyecto cripto antes de invertir, más allá del precio",
+    "Funding rate y open interest: qué dicen sobre si un pump tiene combustible para seguir o está sobre-apalancado",
+    "Gestión de riesgo específica para pump trading: sizing, stop-loss y cuándo tomar ganancias parciales",
+    "Rotación de narrativas en cripto (AI coins, memecoins, RWA, gaming): cómo detectar el sector caliente antes de que sea obvio",
+    "Errores comunes al perseguir un pump que ya corrió mucho (FOMO entry) y cómo evitarlos",
+    "Cómo la correlación con BTC afecta la probabilidad de éxito de un altcoin pump",
+    "Qué aprender de un trade perdedor en pump trading: separar mala suerte de mal proceso",
+    "Análisis técnico vs fundamental aplicado específicamente a microcaps cripto de baja liquidez",
+    "Cómo se manipulan los volúmenes en exchanges de bajo volumen y cómo detectarlo",
 ]
 
 # ── System prompts de cada rol ─────────────────────────────────────────────────
@@ -78,8 +88,54 @@ Devuelve ÚNICAMENTE un JSON válido, sin texto adicional:
 Cada lista: máximo 4 ítems. Cada ítem: máximo 15 palabras."""
 
 
+def _tema_de_trade_reciente() -> str | None:
+    """Si hay paper trades recientes de Hermes en el vault, debatir sobre uno real
+    en vez de un tema genérico — autolearning sobre decisiones propias."""
+    trades_dir = Path(VAULT_PATH) / "Hermes" / "trades"
+    if not trades_dir.exists():
+        return None
+    files = sorted(trades_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[:15]
+    if not files:
+        return None
+    f = random.choice(files)
+    try:
+        content = f.read_text(encoding="utf-8", errors="ignore")
+        symbol_m  = re.search(r"^symbol:\s*(.+)$", content, re.MULTILINE)
+        cluster_m = re.search(r"^cluster:\s*(.+)$", content, re.MULTILINE)
+        score_m   = re.search(r"^signal_score:\s*(.+)$", content, re.MULTILINE)
+        outcome_m = re.search(r"^outcome:\s*(.*)$", content, re.MULTILINE)
+        symbol  = symbol_m.group(1).strip()  if symbol_m  else "un activo"
+        cluster = cluster_m.group(1).strip() if cluster_m else "?"
+        score   = score_m.group(1).strip()   if score_m   else "?"
+        outcome = outcome_m.group(1).strip() if outcome_m else ""
+        resultado_txt = f" (resultado: {outcome})" if outcome else " (todavía abierta o sin resolver)"
+        return (
+            f"Analizar la entrada en {symbol} (cluster {cluster}, score {score}){resultado_txt}: "
+            f"¿la señal estaba bien fundamentada? ¿el sizing y los niveles de TP/SL fueron correctos? "
+            f"¿qué cambiaría para la próxima vez?"
+        )
+    except Exception:
+        return None
+
+
 def seleccionar_tema() -> str:
-    """Pick topic from vault keywords or default list."""
+    """Prioriza pumps/cripto/proyectos: 35% un trade real reciente si existe,
+    35% un tema curado de TEMAS_CRIPTO, 25% un tema general, 5% palabras del vault."""
+    roll = random.random()
+
+    if roll < 0.35:
+        tema_real = _tema_de_trade_reciente()
+        if tema_real:
+            return tema_real
+        # sin trades aún — cae a tema curado de cripto
+        return random.choice(TEMAS_CRIPTO)
+
+    if roll < 0.70:
+        return random.choice(TEMAS_CRIPTO)
+
+    if roll < 0.95:
+        return random.choice(TEMAS)
+
     vault = Path(VAULT_PATH)
     if vault.exists():
         md_files = list(vault.rglob("*.md"))
@@ -92,7 +148,7 @@ def seleccionar_tema() -> str:
                     return f"Profundizar en: {', '.join(sample)} — mejores prácticas y errores comunes"
             except Exception:
                 pass
-    return random.choice(TEMAS)
+    return random.choice(TEMAS_CRIPTO)
 
 
 def run_debate(tema: str, rondas: int = 5) -> list:
