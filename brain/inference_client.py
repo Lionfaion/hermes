@@ -126,6 +126,8 @@ def _openrouter_chat(messages: list, model: str, tools: list | None = None, stre
             if msg.tool_calls:
                 result["tool_calls"] = [
                     {
+                        "id": tc.id,
+                        "type": "function",
                         "function": {
                             "name": tc.function.name,
                             "arguments": json.loads(tc.function.arguments)
@@ -202,6 +204,8 @@ def _groq_chat(messages: list, model: str, tools: list | None = None) -> dict:
             if msg.tool_calls:
                 result["tool_calls"] = [
                     {
+                        "id": tc.id,
+                        "type": "function",
                         "function": {
                             "name": tc.function.name,
                             "arguments": json.loads(tc.function.arguments)
@@ -278,6 +282,8 @@ def _google_chat(messages: list, model: str, tools: list | None = None) -> dict:
             if msg.tool_calls:
                 result["tool_calls"] = [
                     {
+                        "id": tc.id,
+                        "type": "function",
                         "function": {
                             "name": tc.function.name,
                             "arguments": json.loads(tc.function.arguments)
@@ -356,6 +362,8 @@ def _anthropic_chat(messages: list, model: str, tools: list | None = None, strea
             if msg.tool_calls:
                 result["tool_calls"] = [
                     {
+                        "id": tc.id,
+                        "type": "function",
                         "function": {
                             "name": tc.function.name,
                             "arguments": json.loads(tc.function.arguments)
@@ -434,6 +442,8 @@ def _openai_chat(messages: list, model: str, tools: list | None = None, stream: 
             if msg.tool_calls:
                 result["tool_calls"] = [
                     {
+                        "id": tc.id,
+                        "type": "function",
                         "function": {
                             "name": tc.function.name,
                             "arguments": json.loads(tc.function.arguments)

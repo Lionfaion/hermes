@@ -505,6 +505,9 @@ class HermesAssistant:
             if not tool_calls:
                 return content
 
+            for i, tc in enumerate(tool_calls):
+                tc.setdefault("id", f"call_{iteration}_{i}")
+
             logger.info("Tool calls (iteración %d): %s",
                        iteration + 1,
                        [tc.get("function", {}).get("name") for tc in tool_calls])
@@ -512,6 +515,7 @@ class HermesAssistant:
             messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
 
             for tc in tool_calls:
+                tool_call_id = tc.get("id")
                 func = tc.get("function", {})
                 name = func.get("name", "")
                 args = func.get("arguments", {})
@@ -529,18 +533,18 @@ class HermesAssistant:
                     if not decision.allowed:
                         result = f"[BLOQUEADO] Herramienta '{name}' denegada por política: {decision.rule_name}"
                         logger.warning("Governance DENY: %s -> %s", name, decision.rule_name)
-                        messages.append({"role": "tool", "content": result})
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": result})
                         continue
                 except Exception:
                     pass
 
                 if budget and not budget.consume(name):
                     result = "[BUDGET] Presupuesto de iteraciones agotado"
-                    messages.append({"role": "tool", "content": result})
+                    messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": result})
                     continue
 
                 result = self.registry.execute(name, args)
-                messages.append({"role": "tool", "content": result})
+                messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": result})
 
         return response.get("content", "") or "[Se alcanzó el límite de iteraciones de herramientas]"
 

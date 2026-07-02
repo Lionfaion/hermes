@@ -58,6 +58,7 @@ def compress_context(
         if msg.get("role") == "tool" and len(msg.get("content", "")) > TOOL_OUTPUT_MAX_CHARS:
             pruned.append({
                 "role": "tool",
+                "tool_call_id": msg.get("tool_call_id"),
                 "content": _prune_tool_output(msg["content"]),
             })
             pruned_count += 1

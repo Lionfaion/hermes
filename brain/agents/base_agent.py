@@ -52,9 +52,13 @@ class BaseAgent:
             if not tool_calls:
                 return response.get("content", "")
 
+            for i, tc in enumerate(tool_calls):
+                tc.setdefault("id", f"call_{iteration}_{i}")
+
             messages.append(response)
 
             for tc in tool_calls:
+                tool_call_id = tc.get("id")
                 func = tc.get("function", {})
                 name = func.get("name", "")
                 args = func.get("arguments", {})
@@ -66,6 +70,6 @@ class BaseAgent:
                 else:
                     result = self.registry.execute(name, args)
 
-                messages.append({"role": "tool", "content": result})
+                messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": result})
 
         return response.get("content", "[Límite de iteraciones alcanzado]")
