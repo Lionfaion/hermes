@@ -73,6 +73,7 @@ def _open_paper_trade(candidate: dict) -> dict | None:
     body = {
         "symbol": candidate["simbolo"],
         "nombre": candidate["nombre"],
+        "coingeckoId": candidate.get("id"),
         "cluster": candidate["cluster"],
         "entryPrice": candidate["price"],
         "signalScore": candidate["totalScore"],
